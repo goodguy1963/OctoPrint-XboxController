@@ -107,6 +107,7 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
                            octoprint.plugin.TemplatePlugin):
 
     def __init__(self):
+        self._identifier = "xbox_controller"  # Ensure a unique identifier is set
         self._controller_handler = None
         self._test_mode = False
 
