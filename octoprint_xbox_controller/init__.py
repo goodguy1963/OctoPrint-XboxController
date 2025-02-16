@@ -37,13 +37,13 @@ class XboxControllerHandler:
 
     def init_controller(self):
         if XboxController is None:
-            logging.error("xbox360controller-Modul nicht verfügbar.")
+            self._plugin.update_status("Controller Modul nicht verfügbar")
             return
         try:
             self.controller = XboxController()
-            logging.info("Xbox-Controller erfolgreich initialisiert.")
+            self._plugin.update_status("Controller verbunden")
         except Exception as e:
-            logging.error("Fehler bei der Controller-Initialisierung: %s", e)
+            self._plugin.update_status("Verbindungsfehler")
             self.controller = None
 
     def _clamp(self, value, min_val, max_val):
@@ -53,23 +53,10 @@ class XboxControllerHandler:
         if not self.controller:
             return None
 
-        # Lese relevante Achsen:
-        x = self.controller.get_axis(3)  # Rechte Joystick X
-        y = self.controller.get_axis(4)  # Rechte Joystick Y
-        e = self.controller.get_axis(0)  # Linker Joystick
-        lt = self.controller.get_axis(2) # Linker Trigger
-        rt = self.controller.get_axis(5) # Rechter Trigger
-
-        # Nutze Trigger als Geschwindigkeitsfaktor (0.1 bis 2.0)
-        trigger_value = max(lt, rt)
-        speed_factor = 0.1 + trigger_value * 1.9
-
-        movement = {
-            "x": x * speed_factor,
-            "y": y * speed_factor,
-            "z": 0.0,  # Erweiterbar: separate Logik für Z-Achse möglich
-            "e": e * speed_factor,
-        }
+        movement = super().read_controller()
+        if movement:
+            # UI Update hinzufügen
+            self._plugin.update_ui(movement)
         return movement
 
     def send_relative_command(self, movement):
@@ -116,10 +103,75 @@ class XboxControllerHandler:
 class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
                            octoprint.plugin.ShutdownPlugin,
                            octoprint.plugin.SettingsPlugin,
-                           octoprint.plugin.SimpleApiPlugin):
+                           octoprint.plugin.AssetPlugin,
+                           octoprint.plugin.TemplatePlugin):
 
     def __init__(self):
         self._controller_handler = None
+        self._test_mode = False
+
+    def get_template_configs(self):
+        return [
+            dict(type="tab", name="Xbox Controller", custom_bindings=True),
+            dict(type="settings", custom_bindings=False)
+        ]
+
+    def get_assets(self):
+        return dict(
+            js=["js/xbox_controller.js"]
+        )
+
+    def get_settings_defaults(self):
+        return dict(
+            enabled=True,
+            xy_scale_factor=150,
+            e_scale_factor=150,
+            z_scale_factor=150,
+            max_z=100
+        )
+
+    def on_api_command(self, command, data):
+        if command == "toggleTestMode":
+            self._test_mode = data.get("enabled", False)
+            return flask.jsonify(success=True)
+        elif command == "updateScaleFactor":
+            axis = data.get("axis")
+            value = data.get("value")
+            
+            if axis == "xy":
+                self._settings.set_int(["xy_scale_factor"], value)
+            elif axis == "z":
+                self._settings.set_int(["z_scale_factor"], value)
+            elif axis == "e":
+                self._settings.set_int(["e_scale_factor"], value)
+                
+            self._settings.save()
+            
+            # Update die Werte im Controller Handler
+            if self._controller_handler:
+                if axis == "xy":
+                    self._controller_handler.xy_scale_factor = value
+                elif axis == "z":
+                    self._controller_handler.z_scale_factor = value
+                elif axis == "e":
+                    self._controller_handler.e_scale_factor = value
+                    
+            return flask.jsonify(success=True)
+
+    def send_controller_values(self, values):
+        if self._test_mode:
+            self._plugin_manager.send_plugin_message(
+                self._identifier,
+                dict(type="controller_values", **values)
+            )
+            if self._test_mode:
+                self._logger.info("Test Mode Values: %s", values)
+
+    def update_status(self, status):
+        self._plugin_manager.send_plugin_message(
+            self._identifier,
+            dict(type="status", status=status)
+        )
 
     ## StartupPlugin: Wird nach dem Start von OctoPrint aufgerufen
     def on_after_startup(self):
@@ -132,37 +184,18 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         if self._controller_handler:
             self._controller_handler.stop()
 
-    ## SettingsPlugin: Standard-Einstellungen für das Plugin
-    def get_settings_defaults(self):
-        return dict(
-            xy_scale_factor=150,
-            e_scale_factor=150,
-            z_scale_factor=150,
-            max_z=100
-        )
-
-    ## API Plugin: Definiert einfache API-Befehle (z.B. für Aufnahme/Wiedergabe)
-    def get_api_commands(self):
-        return dict(
-            start_recording=[],
-            stop_recording=[],
-            playback_recording=["index"]
-        )
-
-    def on_api_command(self, command, data):
-        # Beispielhafte Implementierung – hier können Funktionen erweitert werden
-        if command == "start_recording":
-            self._logger.info("Recording gestartet")
-            return flask.jsonify(dict(success=True))
-        elif command == "stop_recording":
-            self._logger.info("Recording gestoppt")
-            return flask.jsonify(dict(success=True))
-        elif command == "playback_recording":
-            index = data.get("index")
-            self._logger.info("Wiedergabe Recording index: %s", index)
-            return flask.jsonify(dict(success=True))
-        else:
-            return flask.make_response("Unbekannter Befehl", 400)
+    def update_ui(self, movement=None):
+        if movement and self._test_mode:
+            self._plugin_manager.send_plugin_message(
+                self._identifier,
+                dict(
+                    type="controller_values",
+                    x=movement["x"],
+                    y=movement["y"],
+                    z=movement["z"],
+                    e=movement["e"]
+                )
+            )
 
     def _send_gcode(self, command):
         # Nutzt die OctoPrint-Drucker-Schnittstelle, um G-Code zu senden.
