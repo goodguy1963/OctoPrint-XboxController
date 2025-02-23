@@ -209,7 +209,7 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         self._printer.commands(command)
 
 __plugin_name__ = "Xbox Controller Plugin"
-__plugin_identifier__ = "xbox_controller"  # Added unique identifier
+__plugin_identifier__ = "octoprint_xbox_controller"  # Added unique identifier
 __plugin_version__ = "0.1.0"             # Added version information
 __plugin_pythoncompat__ = ">=3,<4"
 __plugin_implementation__ = XboxControllerPlugin()

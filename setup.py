@@ -16,7 +16,7 @@ setup(
     ],
     entry_points={
         "octoprint.plugin": [
-            "xbox_controller = octoprint_xbox_controller:XboxControllerPlugin"
+            "octoprint_xbox_controller = octoprint_xbox_controller:XboxControllerPlugin"
         ]
     },
     zip_safe=False,
