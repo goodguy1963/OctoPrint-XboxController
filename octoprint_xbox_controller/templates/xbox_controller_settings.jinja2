@@ -28,4 +28,16 @@
             <li>Nutzen Sie die Schieberegler zur Feinjustierung der Skalierungsfaktoren.</li>
         </ol>
     </div>
+    <div class="form-group">
+        <label for="input_xy_scale">X/Y Skalierungsfaktor</label>
+        <input type="number" id="input_xy_scale" data-bind="value: settings.plugins.xbox_controller.xy_scale_factor" class="form-control" min="10" max="300" />
+    </div>
+    <div class="form-group">
+        <label for="input_z_scale">Z Skalierungsfaktor</label>
+        <input type="number" id="input_z_scale" data-bind="value: settings.plugins.xbox_controller.z_scale_factor" class="form-control" min="10" max="300" />
+    </div>
+    <div class="form-group">
+        <label for="input_e_scale">E Skalierungsfaktor</label>
+        <input type="number" id="input_e_scale" data-bind="value: settings.plugins.xbox_controller.e_scale_factor" class="form-control" min="10" max="300" />
+    </div>
 </form>
