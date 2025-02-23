@@ -17,6 +17,12 @@ Dieses Plugin ermöglicht die Steuerung eines 3D-Druckers über einen Xbox-Contr
    https://github.com/goodguy1963/OctoPrint-XboxController/archive/main.zip
    ```
 
+## Plugin Aktivierung und Verhalten
+- Sobald das Plugin in den Einstellungen aktiviert wird, versucht es eine Verbindung zum Xbox-Controller herzustellen.
+- Bei erfolgreicher Aktivierung und erkanntem Controller können direkt G-Code-Befehle an den Drucker gesendet werden, sofern der Testmodus deaktiviert ist.
+- Ist das Plugin deaktiviert, werden keine G-Code-Befehle gesendet und die Steuerung ist nicht aktiv.
+- Sobald die Einstellungen gespeichert werden, startet das Plugin automatisch oder stoppt je nach gesetztem Status.
+
 ## Usage
 
 Das Xbox Controller Plugin bietet folgende Funktionen:

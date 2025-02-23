@@ -19,9 +19,10 @@ except ImportError:
 # Controller Handler Klasse
 ################################################################
 class XboxControllerHandler:
-    def __init__(self, send_gcode_callback, settings):
+    def __init__(self, send_gcode_callback, settings, plugin):  # Add plugin parameter
         self.send_gcode = send_gcode_callback
         self.settings = settings
+        self._plugin = plugin  # Store plugin reference
 
         self.controller = None
         self.running = False
@@ -38,12 +39,15 @@ class XboxControllerHandler:
     def init_controller(self):
         if XboxController is None:
             self._plugin.update_status("Controller Modul nicht verfügbar")
+            self._plugin._logger.error("Xbox360Controller module not available")
             return
         try:
             self.controller = XboxController()
             self._plugin.update_status("Controller verbunden")
+            self._plugin._logger.info("Xbox controller connected successfully")
         except Exception as e:
-            self._plugin.update_status("Verbindungsfehler")
+            self._plugin.update_status("Verbindungsfehler: %s" % str(e))
+            self._plugin._logger.error("Failed to initialize controller: %s" % str(e))
             self.controller = None
 
     def _clamp(self, value, min_val, max_val):
@@ -166,13 +170,13 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
             return flask.jsonify(success=True)
 
     def send_controller_values(self, values):
+        # Remove duplicate test mode check
+        self._plugin_manager.send_plugin_message(
+            self._identifier,
+            dict(type="controller_values", **values)
+        )
         if self._test_mode:
-            self._plugin_manager.send_plugin_message(
-                self._identifier,
-                dict(type="controller_values", **values)
-            )
-            if self._test_mode:
-                self._logger.info("Test Mode Values: %s", values)
+            self._logger.info("Test Mode Values: %s", values)
 
     def update_status(self, status):
         self._plugin_manager.send_plugin_message(
@@ -183,7 +187,11 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
     ## StartupPlugin: Wird nach dem Start von OctoPrint aufgerufen
     def on_after_startup(self):
         self._logger.info("Starte Xbox Controller Plugin")
-        self._controller_handler = XboxControllerHandler(self._send_gcode, self._settings)
+        self._controller_handler = XboxControllerHandler(
+            self._send_gcode, 
+            self._settings,
+            self  # Pass self as plugin reference
+        )
         self._controller_handler.start()
 
     ## ShutdownPlugin: Wird beim Herunterfahren von OctoPrint aufgerufen
@@ -205,8 +213,15 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
             )
 
     def _send_gcode(self, command):
-        # Nutzt die OctoPrint-Drucker-Schnittstelle, um G-Code zu senden.
-        self._printer.commands(command)
+        if self._test_mode:
+            self._logger.info("Test Mode: Simulated sending command: %s", command)
+            # Optionally send a plugin message for UI or further terminal logging
+            self._plugin_manager.send_plugin_message(
+                self._identifier,
+                dict(type="simulated_command", command=command)
+            )
+        else:
+            self._printer.commands(command)
 
     def on_settings_save(self, data):
         old_enabled = self._settings.get_boolean(["enabled"])
