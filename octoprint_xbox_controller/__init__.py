@@ -12,7 +12,7 @@ try:
     from xbox360controller import XboxController
 except ImportError:
     XboxController = None
-    logging.error("Das Modul 'xbox360controller ' ist nicht installiert.")
+    logging.error("Das Modul 'xbox360controller' ist nicht installiert.")
 
 
 ################################################################
@@ -253,4 +253,4 @@ __plugin_implementation__ = XboxControllerPlugin()
 
 def __plugin_load__():
     global __plugin_implementation__
-    return __plugin_implementation
+    return __plugin_implementation__
