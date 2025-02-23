@@ -208,6 +208,17 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         # Nutzt die OctoPrint-Drucker-Schnittstelle, um G-Code zu senden.
         self._printer.commands(command)
 
+    def on_settings_save(self, data):
+        old_enabled = self._settings.get_boolean(["enabled"])
+        octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
+        new_enabled = self._settings.get_boolean(["enabled"])
+        if old_enabled != new_enabled:
+            if new_enabled:
+                if not self._controller_handler.running:
+                    self._controller_handler.start()
+            else:
+                self._controller_handler.stop()
+
 __plugin_name__ = "Xbox Controller Plugin"
 __plugin_identifier__ = "octoprint_xbox_controller"  # Added unique identifier
 __plugin_version__ = "0.1.0"             # Added version information
