@@ -12,7 +12,7 @@ try:
     from xbox360controller import XboxController
 except ImportError:
     XboxController = None
-    logging.error("Das Modul 'xbox360controller' ist nicht installiert.")
+    logging.error("Das Modul 'xboxcontroller' ist nicht installiert.")
 
 
 ################################################################
@@ -143,6 +143,7 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         )
 
     def get_settings_defaults(self):
+        # Removed the 'enabled' setting to always run the plugin
         return dict(
             xy_scale_factor=150,
             e_scale_factor=150,
@@ -199,9 +200,9 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         self._controller_handler = XboxControllerHandler(
             self._send_gcode, 
             self._settings,
-            self  # Pass self as plugin reference
+            self  # Plugin reference
         )
-        # Always start the handler, regardless of controller presence
+        # Always start the handler, regardless of controller presence.
         self._controller_handler.start()
 
     ## ShutdownPlugin: Wird beim Herunterfahren von OctoPrint aufgerufen
@@ -234,8 +235,13 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
             self._printer.commands(command)
 
     def on_settings_save(self, data):
+        # Save settings without checking an 'enabled' state
         octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
-        # No need to check enabled state - plugin is always active
+        # Optionally update scaling factors in the handler
+        if self._controller_handler:
+            self._controller_handler.xy_scale_factor = self._settings.get_int(["xy_scale_factor"], 150)
+            self._controller_handler.z_scale_factor = self._settings.get_int(["z_scale_factor"], 150)
+            self._controller_handler.e_scale_factor = self._settings.get_int(["e_scale_factor"], 150)
 
 __plugin_name__ = "Xbox Controller Plugin"
 __plugin_identifier__ = "octoprint_xbox_controller"  # Added unique identifier
