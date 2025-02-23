@@ -144,7 +144,6 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
 
     def get_settings_defaults(self):
         return dict(
-            enabled=True,
             xy_scale_factor=150,
             e_scale_factor=150,
             z_scale_factor=150,
@@ -202,8 +201,8 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
             self._settings,
             self  # Pass self as plugin reference
         )
-        if self._settings.get_boolean(["enabled"]):
-            self._controller_handler.start()
+        # Always start the handler, regardless of controller presence
+        self._controller_handler.start()
 
     ## ShutdownPlugin: Wird beim Herunterfahren von OctoPrint aufgerufen
     def on_shutdown(self):
@@ -236,13 +235,7 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
 
     def on_settings_save(self, data):
         octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
-        
-        if self._settings.get_boolean(["enabled"]):
-            if not self._controller_handler.running:
-                self._controller_handler.start()
-        else:
-            if self._controller_handler.running:
-                self._controller_handler.stop()
+        # No need to check enabled state - plugin is always active
 
 __plugin_name__ = "Xbox Controller Plugin"
 __plugin_identifier__ = "octoprint_xbox_controller"  # Added unique identifier

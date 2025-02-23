@@ -1,94 +1,80 @@
 # OctoPrint Xbox Controller Plugin
 
-Ein umfassendes Plugin zur präzisen Steuerung eines 3D-Druckers mit einem Xbox-Controller.
+Ein Plugin zur Steuerung eines 3D-Druckers mit einem Xbox-Controller.
 
-## Features & Funktionsweise
+## Wichtige Information
+Das Plugin ist nach der Installation sofort aktiv und läuft permanent im Hintergrund. Es sind keine zusätzlichen Aktivierungsschritte erforderlich.
 
-### Grundlegende Funktionen
-- **Echtzeit-Steuerung**: Direktes Mapping von Controller-Eingaben zu Druckerbewegungen
-- **Achsensteuerung**:
-  - Linker Stick: X/Y-Achsen Bewegung
-  - Rechter Stick (vertikal): Z-Achsen Bewegung
-  - Rechter Trigger: Extruder-Steuerung
+## Funktionsweise
 
-### Plugin-Modi
+### Betriebsmodi
+1. **Normaler Modus** (Standard)
+   - Sendet Bewegungsbefehle direkt an den Drucker
+   - Aktiv sobald ein Controller erkannt wird
+   - Keine manuelle Aktivierung erforderlich
 
-#### Normaler Betriebsmodus
-- Sendet G-Code-Befehle direkt an den Drucker
-- Relative Bewegungen (G91) für präzise Steuerung
-- Automatische Rückkehr zum absoluten Positionierungsmodus (G90) nach jeder Bewegung
+2. **Test-Modus**
+   - Aktivierbar über Button im Plugin-Tab
+   - Zeigt Controller-Werte in Echtzeit an
+   - Simuliert Befehle ohne sie an den Drucker zu senden
+   - Ausgabe der Bewegungsbefehle im Terminal
 
-#### Test-Modus
-- Aktivierbar über Button im Plugin-Tab
-- Zeigt Controller-Werte in Echtzeit an, ohne Befehle an den Drucker zu senden
-- Alle Bewegungen werden im Terminal protokolliert
-- Ideal zur Kalibrierung und zum Testen der Steuerung
+### Controller-Status
+- "Controller verbunden": Bereit für Bewegungsbefehle
+- "Kein Controller gefunden": Plugin aktiv, wartet auf Controller
+- "Controller Modul nicht verfügbar": Xbox360Controller Modul fehlt
 
-### Sicherheitsfunktionen
-- Bewegungsbegrenzung durch konfigurierbare Grenzwerte
-  - X/Y: -10mm bis +10mm pro Bewegung
-  - Z: -10mm bis +10mm pro Bewegung
-  - E: -5mm bis +5mm pro Extrudierung
-- Automatische Wiederverbindungsversuche bei Verbindungsverlust
-- Fehlertolerante Ausführung mit detailliertem Logging
+## Steuerung
+- **Linker Stick**: X/Y-Achsen (horizontale Bewegung)
+- **Rechter Stick**: Z-Achse (vertikale Bewegung)
+- **Rechter Trigger**: Extruder
 
 ## Installation
 
-### Voraussetzungen
-- OctoPrint Version 1.3.0 oder höher
-- Python 3.6 oder höher
-- Installiertes `xbox360controller` Modul
-- Kompatible Xbox-Controller Hardware
-
-### Installationsschritte
-1. Installation über den OctoPrint Plugin Manager:
+1. Plugin installieren über OctoPrint Plugin Manager:
    ```
    https://github.com/goodguy1963/OctoPrint-XboxController/archive/main.zip
    ```
-2. Server-Neustart nach Installation
-3. Plugin in OctoPrint-Einstellungen aktivieren
+2. OctoPrint neustarten
+3. Xbox Controller anschließen (optional, Plugin funktioniert auch ohne)
 
-### Konfiguration
+## Konfiguration
 
-#### Grundeinstellung
+### Test-Modus Einrichtung
 1. Plugin-Tab "Xbox Controller" öffnen
-2. Test-Modus aktivieren für erste Einrichtung
-3. Bewegungswerte in Echtzeit überprüfen
+2. "Test-Modus" aktivieren
+3. Controller-Bewegungen testen
+4. Skalierungsfaktoren nach Bedarf anpassen
 
-#### Achsen-Kalibrierung
-- **X/Y-Skalierung**: Beeinflusst Geschwindigkeit der horizontalen Bewegung
-- **Z-Skalierung**: Steuert Präzision der Höhenverstellung
-- **E-Skalierung**: Reguliert Extrusionsgeschwindigkeit
+### Feinjustierung
+- **X/Y-Skalierung**: Geschwindigkeit der horizontalen Bewegung
+- **Z-Skalierung**: Präzision der Höhenverstellung
+- **E-Skalierung**: Extrusionsgeschwindigkeit
 
-### Fehlerbehebung
+## Technische Details
 
-#### Status-Meldungen
-- "Controller verbunden": Erfolgreiche Verbindung
-- "Kein Controller gefunden": Gerät nicht erkannt
-- "Controller Modul nicht verfügbar": Software-Abhängigkeit fehlt
+### Bewegungsgrenzen
+- X/Y: ±10mm pro Bewegung
+- Z: ±10mm pro Bewegung
+- E: ±5mm pro Extrusion
 
-#### Bekannte Probleme
-- Plugin startet im deaktivierten Zustand: Neustart von OctoPrint erforderlich
-- Keine Bewegung trotz Verbindung: Test-Modus prüfen
-- Verzögerte Reaktion: Skalierungsfaktoren anpassen
+### Timing
+- Controller-Abfrage: 10ms
+- Bewegungskommandos: max. alle 500ms
+- Verbindungsversuche: alle 5 Sekunden
 
-### Technische Details
+## Support & Fehlersuche
 
-#### G-Code Implementierung
-- Verwendet relativen Bewegungsmodus (G91)
-- Standardformat: `G91\nG1 X{x} Y{y} Z{z} E{e}\nG90`
-- Automatische Normalisierung der Controller-Werte
+### Häufige Probleme
+- **Keine Bewegung**: Test-Modus aktiv?
+- **Kein Controller erkannt**: USB-Verbindung prüfen
+- **Zu schnelle/langsame Bewegung**: Skalierungsfaktoren anpassen
 
-#### Ereignisverarbeitung
-- Controller-Abfrage alle 0.01 Sekunden
-- Bewegungsbefehle maximal alle 0.5 Sekunden
-- Automatische Wiederverbindung alle 5 Sekunden bei Verbindungsverlust
-
-## Support
-
-- GitHub Issues für Fehlermeldungen
-- Logs prüfen unter OctoPrint-Einstellungen -> Logging
+### Logs
+Terminal-Ausgaben im Test-Modus zeigen:
+- Simulierte G-Code Befehle
+- Controller-Werte in Echtzeit
+- Verbindungsstatus
 
 ## Lizenz
-
-Veröffentlicht unter der MIT-Lizenz
+MIT
