@@ -1,0 +1,15 @@
+body {
+    /* Basic body styling */
+    background-color: #f9f9f9;
+}
+
+#tab_plugin_xbox_controller {
+    /* Plugin tab styling */
+    padding: 15px;
+    background-color: #fff;
+    border: 1px solid #ddd;
+}
+
+.table {
+    margin-top: 10px;
+}

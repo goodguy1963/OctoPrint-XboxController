@@ -11,32 +11,17 @@
                 </button>
             </div>
         </div>
-
-        <!-- Werte-Anzeige -->
+        <!-- Live Values & Calibration -->
         <div data-bind="visible: isTestMode" style="margin-top: 20px">
             <h5>Controller Werte:</h5>
             <table class="table table-striped table-condensed">
                 <tbody>
-                    <tr>
-                        <td>X-Achse:</td>
-                        <td><span data-bind="text: currentX"></span></td>
-                    </tr>
-                    <tr>
-                        <td>Y-Achse:</td>
-                        <td><span data-bind="text: currentY"></span></td>
-                    </tr>
-                    <tr>
-                        <td>Z-Achse:</td>
-                        <td><span data-bind="text: currentZ"></span></td>
-                    </tr>
-                    <tr>
-                        <td>Extruder:</td>
-                        <td><span data-bind="text: currentE"></span></td>
-                    </tr>
+                    <tr><td>X-Achse:</td><td><span data-bind="text: currentX"></span></td></tr>
+                    <tr><td>Y-Achse:</td><td><span data-bind="text: currentY"></span></td></tr>
+                    <tr><td>Z-Achse:</td><td><span data-bind="text: currentZ"></span></td></tr>
+                    <tr><td>Extruder:</td><td><span data-bind="text: currentE"></span></td></tr>
                 </tbody>
             </table>
-
-            <!-- Kalibrierung -->
             <h5>Achsen-Kalibrierung:</h5>
             <div class="control-group">
                 <label class="control-label">X/Y Skalierung:</label>

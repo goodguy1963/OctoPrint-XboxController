@@ -12,7 +12,7 @@ try:
     from xbox360controller import XboxController
 except ImportError:
     XboxController = None
-    logging.error("Das Modul 'xboxcontroller' ist nicht installiert.")
+    logging.error("Das Modul 'xbox360controller ' ist nicht installiert.")
 
 
 ################################################################
@@ -139,7 +139,8 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
 
     def get_assets(self):
         return dict(
-            js=["js/xbox_controller.js"]
+            js=["js/xbox_controller.js"],
+            css=["css/xbox_controller.css"]
         )
 
     def get_settings_defaults(self):
