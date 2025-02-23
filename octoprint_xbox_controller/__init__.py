@@ -28,6 +28,7 @@ class XboxControllerHandler:
         self.running = False
         self.thread = None
         self._last_sent_time = 0
+        self.initialized = False  # Add initialization flag
 
         # Lade Skalierungsfaktoren aus den Plugin-Einstellungen
         self.xy_scale_factor = self.settings.get_int(["xy_scale_factor"], 150)
@@ -37,18 +38,21 @@ class XboxControllerHandler:
         self.current_z = 0
 
     def init_controller(self):
-        if XboxController is None:
-            self._plugin.update_status("Controller Modul nicht verfügbar")
-            self._plugin._logger.error("Xbox360Controller module not available")
-            return
         try:
+            if XboxController is None:
+                self._plugin.update_status("Controller Modul nicht verfügbar")
+                self._plugin._logger.warning("Xbox360Controller module not available")
+                return False
+            
             self.controller = XboxController()
+            self.initialized = True
             self._plugin.update_status("Controller verbunden")
-            self._plugin._logger.info("Xbox controller connected successfully")
+            return True
+            
         except Exception as e:
-            self._plugin.update_status("Verbindungsfehler: %s" % str(e))
-            self._plugin._logger.error("Failed to initialize controller: %s" % str(e))
-            self.controller = None
+            self._plugin.update_status("Kein Controller gefunden - Plugin läuft im Offline-Modus")
+            self._plugin._logger.warning("No controller found: %s", str(e))
+            return False
 
     def _clamp(self, value, min_val, max_val):
         return max(min(value, max_val), min_val)
@@ -83,18 +87,24 @@ class XboxControllerHandler:
 
     def update_loop(self):
         while self.running:
-            if self.controller is None:
-                self.init_controller()
-                time.sleep(1)
-                continue
-
-            now = time.time()
-            if now - self._last_sent_time >= 0.5:
-                movement = self.read_controller()
-                if movement:
-                    self.send_relative_command(movement)
-                self._last_sent_time = now
-            time.sleep(0.01)
+            try:
+                if not self.initialized:
+                    if not self.init_controller():
+                        time.sleep(5)  # Retry every 5 seconds
+                        continue
+                
+                now = time.time()
+                if now - self._last_sent_time >= 0.5:
+                    movement = self.read_controller()
+                    if movement:
+                        self.send_relative_command(movement)
+                    self._last_sent_time = now
+                time.sleep(0.01)
+                
+            except Exception as e:
+                self._plugin._logger.error("Error in update loop: %s", str(e))
+                self.initialized = False
+                time.sleep(5)
 
     def start(self):
         self.running = True
@@ -186,13 +196,14 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
 
     ## StartupPlugin: Wird nach dem Start von OctoPrint aufgerufen
     def on_after_startup(self):
-        self._logger.info("Starte Xbox Controller Plugin")
+        self._logger.info("Starting Xbox Controller Plugin")
         self._controller_handler = XboxControllerHandler(
             self._send_gcode, 
             self._settings,
             self  # Pass self as plugin reference
         )
-        self._controller_handler.start()
+        if self._settings.get_boolean(["enabled"]):
+            self._controller_handler.start()
 
     ## ShutdownPlugin: Wird beim Herunterfahren von OctoPrint aufgerufen
     def on_shutdown(self):
@@ -224,14 +235,13 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
             self._printer.commands(command)
 
     def on_settings_save(self, data):
-        old_enabled = self._settings.get_boolean(["enabled"])
         octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
-        new_enabled = self._settings.get_boolean(["enabled"])
-        if old_enabled != new_enabled:
-            if new_enabled:
-                if not self._controller_handler.running:
-                    self._controller_handler.start()
-            else:
+        
+        if self._settings.get_boolean(["enabled"]):
+            if not self._controller_handler.running:
+                self._controller_handler.start()
+        else:
+            if self._controller_handler.running:
                 self._controller_handler.stop()
 
 __plugin_name__ = "Xbox Controller Plugin"
