@@ -12,7 +12,8 @@ setup(
     include_package_data=True,
     install_requires=[
         "octoprint>=1.3.0",
-        "xbox360controller"
+        "xbox360controller",
+        "pygame"
     ],
     entry_points={
         "octoprint.plugin": [

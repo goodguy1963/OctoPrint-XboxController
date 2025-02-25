@@ -80,6 +80,74 @@ $(function() {
             self.zScaleFactor(self.settings.settings.plugins.xbox_controller.z_scale_factor());
             self.eScaleFactor(self.settings.settings.plugins.xbox_controller.e_scale_factor());
         };
+
+        function setupGamepad() {
+            // ... existing code ...
+
+            function checkGamepadStatus() {
+                // ... existing code ...
+
+                // Bewegungsfunktionen mit variabler Distanz basierend auf Joystick/Trigger-Position
+                function moveX(value) {
+                    // Berechne Distanz basierend auf Joystick-Position (max 10mm)
+                    var distance = Math.min(Math.abs(value) * 10, 10).toFixed(1);
+                    if (value > 0.1) {
+                        self.control.sendJogCommand("x", distance);
+                    } else if (value < -0.1) {
+                        self.control.sendJogCommand("x", -distance);
+                    }
+                }
+
+                function moveY(value) {
+                    // Berechne Distanz basierend auf Joystick-Position (max 10mm)
+                    var distance = Math.min(Math.abs(value) * 10, 10).toFixed(1);
+                    if (value > 0.1) {
+                        self.control.sendJogCommand("y", distance);
+                    } else if (value < -0.1) {
+                        self.control.sendJogCommand("y", -distance);
+                    }
+                }
+
+                function moveZ(value) {
+                    // Berechne Distanz basierend auf Joystick-Position/Trigger (max 10mm)
+                    var distance = Math.min(Math.abs(value) * 10, 10).toFixed(1);
+                    if (value > 0.1) {
+                        self.control.sendJogCommand("z", distance);
+                    } else if (value < -0.1) {
+                        self.control.sendJogCommand("z", -distance);
+                    }
+                }
+
+                // ... existing code ...
+
+                // Linker Joystick für X/Y-Bewegung mit variabler Distanz
+                if (Math.abs(gamepad.axes[0]) > 0.1) {
+                    moveX(gamepad.axes[0]);
+                }
+                if (Math.abs(gamepad.axes[1]) > 0.1) {
+                    moveY(-gamepad.axes[1]); // Y-Achse ist invertiert
+                }
+
+                // Rechter Joystick für Z-Bewegung mit variabler Distanz
+                if (Math.abs(gamepad.axes[3]) > 0.1) {
+                    moveZ(-gamepad.axes[3]);
+                }
+
+                // Trigger für Z-Bewegung mit variabler Distanz
+                // Linker Trigger (LT)
+                if (gamepad.buttons[6].value > 0.1) {
+                    moveZ(-gamepad.buttons[6].value);
+                }
+                // Rechter Trigger (RT)
+                if (gamepad.buttons[7].value > 0.1) {
+                    moveZ(gamepad.buttons[7].value);
+                }
+
+                // ... existing code ...
+            }
+
+            // ... existing code ...
+        }
     }
 
     OCTOPRINT_VIEWMODELS.push({
