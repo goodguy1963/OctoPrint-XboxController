@@ -22,11 +22,10 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         self._identifier = "xbox_controller"
         self.controller_thread = None
         self.controller_running = False
-        self.test_mode = True  # Debug-Modus standardmäßig aktivieren
+        self.test_mode = False
         self.xy_scale_factor = 150
         self.z_scale_factor = 150
         self.e_scale_factor = 150
-        self._logger.setLevel(logging.DEBUG)  # Debug-Level für Logger setzen
 
     def get_template_configs(self):
         return [
@@ -110,14 +109,9 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
             pygame.init()
             pygame.joystick.init()
             
-            # Debug-Ausgabe für Controller-Erkennung
-            self._logger.info("Suche nach Controllern...")
-            
             # Warte auf Controller-Verbindung
             while self.controller_running:
                 joystick_count = pygame.joystick.get_count()
-                self._logger.info("Gefundene Controller: %d", joystick_count)
-                
                 if joystick_count > 0:
                     break
                 self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Warte auf Controller..."})
@@ -129,71 +123,22 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
             # Controller initialisieren
             joystick = pygame.joystick.Joystick(0)
             joystick.init()
-            
-            # Debug-Informationen zum Controller
-            controller_name = joystick.get_name()
-            num_axes = joystick.get_numaxes()
-            num_buttons = joystick.get_numbuttons()
-            
-            self._logger.info("Controller verbunden: %s", controller_name)
-            self._logger.info("Anzahl Achsen: %d, Anzahl Tasten: %d", num_axes, num_buttons)
-            
-            # Achsen-Mapping basierend auf Controller-Typ
-            left_x_axis = 0
-            left_y_axis = 1
-            right_x_axis = 2
-            right_y_axis = 3
-            left_trigger_axis = 4
-            right_trigger_axis = 5
-
-            # Anpassung für verschiedene Controller-Typen
-            if "Xbox 360" in controller_name:
-                # Standard-Mapping für Xbox 360 Controller
-                pass
-            elif "Xbox One" in controller_name:
-                # Anpassung für Xbox One Controller
-                pass
-            elif "Logitech" in controller_name:
-                # Anpassung für Logitech Controller
-                left_trigger_axis = 2
-                right_trigger_axis = 5
-                right_x_axis = 3
-                right_y_axis = 4
-
-            self._logger.info("Achsen-Mapping: LX=%d, LY=%d, RX=%d, RY=%d, LT=%d, RT=%d",
-                             left_x_axis, left_y_axis, right_x_axis, right_y_axis, 
-                             left_trigger_axis, right_trigger_axis)
-            
-            self._plugin_manager.send_plugin_message(self._identifier, {
-                "type": "status", 
-                "status": "Verbunden: " + controller_name
-            })
+            self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Verbunden: " + joystick.get_name()})
             
             # Hauptschleife
             while self.controller_running:
-                # Verarbeite alle Events
-                for event in pygame.event.get():
-                    if event.type == pygame.JOYBUTTONDOWN:
-                        self._logger.info("Taste gedrückt: %d", event.button)
-                        self.handle_button_press(event.button)
-                
                 pygame.event.pump()
                 
                 # Joystick-Werte auslesen
-                left_x = joystick.get_axis(left_x_axis)  # Linker Joystick X-Achse für Extruder
-                left_y = -joystick.get_axis(left_y_axis)  # Y-Achse invertieren
-                right_x = joystick.get_axis(right_x_axis)  # Rechter Joystick X-Achse
-                right_y = -joystick.get_axis(right_y_axis)  # Y-Achse invertieren
-                
-                # Debug-Ausgabe für Joystick-Werte
-                if abs(left_x) > 0.1 or abs(left_y) > 0.1 or abs(right_x) > 0.1 or abs(right_y) > 0.1:
-                    self._logger.debug("Joystick-Werte: L(%0.2f, %0.2f), R(%0.2f, %0.2f)", 
-                                      left_x, left_y, right_x, right_y)
+                left_x = joystick.get_axis(0)  # Linker Joystick X-Achse für Extruder
+                left_y = -joystick.get_axis(1)  # Y-Achse invertieren
+                right_x = joystick.get_axis(2)  # Rechter Joystick X-Achse
+                right_y = -joystick.get_axis(3)  # Y-Achse invertieren
                 
                 # Trigger-Werte auslesen (können je nach Controller unterschiedlich sein)
                 try:
-                    left_trigger = joystick.get_axis(left_trigger_axis) if joystick.get_numaxes() > left_trigger_axis else 0
-                    right_trigger = joystick.get_axis(right_trigger_axis) if joystick.get_numaxes() > right_trigger_axis else 0
+                    left_trigger = joystick.get_axis(4) if joystick.get_numaxes() > 4 else 0
+                    right_trigger = joystick.get_axis(5) if joystick.get_numaxes() > 5 else 0
                 except:
                     # Fallback für andere Controller-Layouts
                     left_trigger = (joystick.get_button(6) * 1.0) if joystick.get_numbuttons() > 6 else 0
@@ -224,6 +169,11 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
                     distance = min(left_trigger * 10, 10)
                     self.move_printer("z", -distance)  # Negative Werte = nach unten
                 
+                # Buttons für andere Funktionen
+                for i in range(joystick.get_numbuttons()):
+                    if joystick.get_button(i):
+                        self.handle_button_press(i)
+                
                 # Testmodus-Daten senden
                 if self.test_mode:
                     self._plugin_manager.send_plugin_message(self._identifier, {
@@ -252,21 +202,13 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
     def move_printer(self, axis, distance):
         """Bewegt den Drucker in der angegebenen Achse um die angegebene Distanz"""
         if not self._printer.is_operational() or self._printer.is_printing():
-            self._logger.warning("Drucker ist nicht betriebsbereit oder druckt gerade")
             return
         
         # Distanz auf eine Dezimalstelle runden
         distance = round(distance, 1)
         
-        # Debug-Ausgabe
-        self._logger.info("Sende Bewegungsbefehl: %s: %.1f", axis, distance)
-        
         # Jog-Befehl senden
-        try:
-            self._printer.jog({axis: distance})
-            self._logger.debug("Bewegungsbefehl gesendet")
-        except Exception as e:
-            self._logger.error("Fehler beim Senden des Bewegungsbefehls: %s", str(e))
+        self._printer.jog({axis: distance})
     
     def handle_button_press(self, button_index):
         """Verarbeitet Tastendrücke des Controllers"""
