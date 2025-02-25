@@ -6,10 +6,7 @@ Dieses Plugin ermöglicht die Steuerung eines 3D-Druckers mit einem Xbox-Control
 
 1. Installieren Sie das Plugin über den OctoPrint Plugin Manager:
    - Gehen Sie zu Einstellungen > Plugin Manager > Weitere Plugins durchsuchen
-   - Fügen Sie diese URL ein:
-
-     (https://github.com/goodguy1963/OctoPrint-XboxController/archive/main.zip)
-     
+   - [Fügen Sie diese URL ein:](https://github.com/goodguy1963/OctoPrint-XboxController/archive/main.zip)
    - Klicken Sie auf "Installieren"
 
 2. Alternativ können Sie das Plugin auch direkt über den Plugin Manager installieren, wenn es im offiziellen Repository verfügbar ist.
