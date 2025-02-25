@@ -42,8 +42,8 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
     def get_settings_defaults(self):
         return dict(
             xy_scale_factor=150,
-            e_scale_factor=150,
             z_scale_factor=150,
+            e_scale_factor=150,
             max_z=100
         )
 

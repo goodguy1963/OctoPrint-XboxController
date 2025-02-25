@@ -1,4 +1,8 @@
+console.log("Xbox Controller Plugin: JavaScript-Datei wird geladen");
+
 $(function() {
+    console.log("Xbox Controller Plugin: DOM bereit");
+    
     function XboxControllerViewModel(parameters) {
         var self = this;
         
@@ -26,10 +30,29 @@ $(function() {
         // Fügen Sie eine Initialisierungsfunktion hinzu
         self.onBeforeBinding = function() {
             console.log("Xbox Controller Plugin: onBeforeBinding wird aufgerufen");
-            // Laden der Einstellungen aus dem Settings-Objekt
-            self.xyScaleFactor(self.settings.settings.plugins.xbox_controller.xy_scale_factor());
-            self.zScaleFactor(self.settings.settings.plugins.xbox_controller.z_scale_factor());
-            self.eScaleFactor(self.settings.settings.plugins.xbox_controller.e_scale_factor());
+            // Überprüfen, ob die Einstellungen existieren
+            console.log("Settings object:", self.settings);
+            
+            try {
+                // Sicherere Methode zum Zugriff auf die Einstellungen
+                if (self.settings && self.settings.settings && 
+                    self.settings.settings.plugins && 
+                    self.settings.settings.plugins.xbox_controller) {
+                    
+                    // Laden der Einstellungen aus dem Settings-Objekt
+                    self.xyScaleFactor(self.settings.settings.plugins.xbox_controller.xy_scale_factor());
+                    self.zScaleFactor(self.settings.settings.plugins.xbox_controller.z_scale_factor());
+                    self.eScaleFactor(self.settings.settings.plugins.xbox_controller.e_scale_factor());
+                } else {
+                    console.warn("Xbox Controller Plugin: Einstellungen nicht verfügbar, verwende Standardwerte");
+                }
+            } catch (e) {
+                console.error("Xbox Controller Plugin: Fehler beim Laden der Einstellungen", e);
+                // Verwende Standardwerte
+                self.xyScaleFactor(150);
+                self.zScaleFactor(150);
+                self.eScaleFactor(150);
+            }
         };
 
         self.onAfterBinding = function() {
@@ -158,7 +181,7 @@ $(function() {
     // Stellen Sie sicher, dass die ViewModel-Registrierung korrekt ist
     OCTOPRINT_VIEWMODELS.push({
         construct: XboxControllerViewModel,
-        dependencies: ["settingsViewModel", "controlViewModel"],  // Fügen Sie controlViewModel hinzu
+        dependencies: ["settingsViewModel", "controlViewModel"],
         elements: ["#tab_plugin_xbox_controller", "#settings_plugin_xbox_controller"]
     });
 });
