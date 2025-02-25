@@ -29,8 +29,9 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
 
     def get_template_configs(self):
         return [
-            dict(type="tab", name="Xbox Controller", custom_bindings=True),
-            dict(type="settings", name="Xbox Controller", custom_bindings=True)
+            dict(type="tab", template="xbox_controller_tab.jinja2", name="Xbox Controller", custom_bindings=True),
+            dict(type="settings", template="xbox_controller_settings.jinja2", name="Xbox Controller", custom_bindings=True),
+            dict(type="navbar", template="xbox_controller_navbar.jinja2", custom_bindings=False)  # Einfaches Template ohne Bindung
         ]
 
     def get_assets(self):
@@ -228,7 +229,7 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         )
 
 __plugin_name__ = "Xbox Controller Plugin"
-__plugin_identifier__ = "octoprint_xbox_controller"
+__plugin_identifier__ = "xbox_controller"
 __plugin_version__ = "0.1.0"
 __plugin_pythoncompat__ = ">=3,<4"
 __plugin_implementation__ = XboxControllerPlugin()

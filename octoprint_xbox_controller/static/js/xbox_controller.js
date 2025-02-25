@@ -3,6 +3,10 @@ console.log("Xbox Controller Plugin: JavaScript-Datei wird geladen");
 $(function() {
     console.log("Xbox Controller Plugin: DOM bereit");
     
+    // Überprüfen, ob die Elemente existieren
+    console.log("Tab-Element beim Start:", $("#tab_plugin_xbox_controller").length);
+    console.log("Settings-Element beim Start:", $("#settings_plugin_xbox_controller").length);
+    
     function XboxControllerViewModel(parameters) {
         var self = this;
         
