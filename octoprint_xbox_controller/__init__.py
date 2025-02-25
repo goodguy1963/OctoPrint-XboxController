@@ -30,7 +30,7 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
     def get_template_configs(self):
         return [
             dict(type="tab", name="Xbox Controller", custom_bindings=True),
-            dict(type="settings", custom_bindings=False)
+            dict(type="settings", name="Xbox Controller", custom_bindings=True)
         ]
 
     def get_assets(self):
@@ -73,6 +73,10 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
     ## StartupPlugin: Wird nach dem Start von OctoPrint aufgerufen
     def on_after_startup(self):
         self._logger.info("Xbox Controller Plugin gestartet")
+        self._logger.info("Überprüfe Template-Konfiguration...")
+        self._logger.info("Template-Configs: %s", self.get_template_configs())
+        self._logger.info("Asset-Configs: %s", self.get_assets())
+        
         self.xy_scale_factor = self._settings.get_int(["xy_scale_factor"], 150)
         self.z_scale_factor = self._settings.get_int(["z_scale_factor"], 150)
         self.e_scale_factor = self._settings.get_int(["e_scale_factor"], 150)

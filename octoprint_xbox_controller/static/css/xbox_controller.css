@@ -13,3 +13,22 @@ body {
 .table {
     margin-top: 10px;
 }
+
+/* Debug-Stile für die UI-Elemente */
+#tab_plugin_xbox_controller {
+    border: 1px dashed #ccc;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+#settings_plugin_xbox_controller {
+    border: 1px dashed #ccc;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+/* Hervorhebung für Debug-Zwecke */
+.debug-highlight {
+    background-color: rgba(255, 255, 0, 0.3);
+    border: 1px solid #ff0;
+}

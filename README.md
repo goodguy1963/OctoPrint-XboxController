@@ -64,9 +64,13 @@ Der Testmodus kann über den Tab "Xbox Controller" aktiviert werden. In diesem M
 - **Plugin startet nicht**: Überprüfen Sie die OctoPrint-Logs auf Fehlermeldungen.
 - **UI-Elemente werden nicht angezeigt**: 
   - Leeren Sie den Browser-Cache und laden Sie die Seite neu
-  - Überprüfen Sie die Browser-Konsole auf JavaScript-Fehler
-  - Starten Sie OctoPrint neu
+  - Überprüfen Sie die Browser-Konsole auf JavaScript-Fehler (F12 drücken)
+  - Stellen Sie sicher, dass JavaScript in Ihrem Browser aktiviert ist
+  - Überprüfen Sie, ob andere OctoPrint-Plugins korrekt funktionieren
+  - Überprüfen Sie die OctoPrint-Logs auf Fehlermeldungen (Settings > Logs)
+  - Starten Sie den OctoPrint-Server neu
   - Deinstallieren und reinstallieren Sie das Plugin
+  - Versuchen Sie einen anderen Browser
 
 ## Lizenz
 

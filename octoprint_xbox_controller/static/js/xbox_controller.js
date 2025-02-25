@@ -1,8 +1,15 @@
 $(function() {
     function XboxControllerViewModel(parameters) {
         var self = this;
-        self.settings = parameters[0];
         
+        // Debug-Ausgabe für die Parameter
+        console.log("Xbox Controller Plugin: ViewModel wird initialisiert");
+        console.log("Parameter:", parameters);
+        
+        self.settings = parameters[0];
+        self.control = parameters[1];  // Fügen Sie den ControlViewModel hinzu
+        
+        // Stellen Sie sicher, dass diese Observables korrekt initialisiert werden
         self.controllerStatus = ko.observable("Nicht verbunden");
         self.isTestMode = ko.observable(false);
         
@@ -16,19 +23,24 @@ $(function() {
         self.zScaleFactor = ko.observable(150);
         self.eScaleFactor = ko.observable(150);
 
-        // Update Handler für Skalierungsfaktoren
-        self.xyScaleFactor.subscribe(function(newValue) {
-            self.updateScaleFactor('xy', newValue);
-        });
-        
-        self.zScaleFactor.subscribe(function(newValue) {
-            self.updateScaleFactor('z', newValue);
-        });
-        
-        self.eScaleFactor.subscribe(function(newValue) {
-            self.updateScaleFactor('e', newValue);
-        });
+        // Fügen Sie eine Initialisierungsfunktion hinzu
+        self.onBeforeBinding = function() {
+            console.log("Xbox Controller Plugin: onBeforeBinding wird aufgerufen");
+            // Laden der Einstellungen aus dem Settings-Objekt
+            self.xyScaleFactor(self.settings.settings.plugins.xbox_controller.xy_scale_factor());
+            self.zScaleFactor(self.settings.settings.plugins.xbox_controller.z_scale_factor());
+            self.eScaleFactor(self.settings.settings.plugins.xbox_controller.e_scale_factor());
+        };
 
+        self.onAfterBinding = function() {
+            console.log("Xbox Controller Plugin: onAfterBinding wird aufgerufen");
+            console.log("Tab-Element:", $("#tab_plugin_xbox_controller").length);
+            console.log("Settings-Element:", $("#settings_plugin_xbox_controller").length);
+            
+            // Fügen Sie einen sichtbaren Debug-Hinweis hinzu
+            $("#tab_plugin_xbox_controller").prepend("<div style='background-color: yellow; padding: 5px; margin-bottom: 10px;'>Debug: ViewModel wurde gebunden</div>");
+        };
+        
         self.updateScaleFactor = function(axis, value) {
             $.ajax({
                 url: API_BASEURL + "plugin/xbox_controller",
@@ -72,13 +84,6 @@ $(function() {
                 // Log values to terminal if in test mode
                 console.log("Controller Values:", data);
             }
-        };
-
-        // Initialisiere Werte aus den Settings
-        self.onSettingsBeforeLoad = function() {
-            self.xyScaleFactor(self.settings.settings.plugins.xbox_controller.xy_scale_factor());
-            self.zScaleFactor(self.settings.settings.plugins.xbox_controller.z_scale_factor());
-            self.eScaleFactor(self.settings.settings.plugins.xbox_controller.e_scale_factor());
         };
 
         function setupGamepad() {
@@ -148,19 +153,12 @@ $(function() {
 
             // ... existing code ...
         }
-
-        // Fügen Sie eine Initialisierungsfunktion hinzu
-        self.onAfterBinding = function() {
-            console.log("Xbox Controller Plugin UI wurde gebunden");
-            // Überprüfen Sie, ob die UI-Elemente korrekt geladen wurden
-            console.log("Tab-Element:", $("#tab_plugin_xbox_controller").length);
-            console.log("Settings-Element:", $("#settings_plugin_xbox_controller").length);
-        };
     }
 
+    // Stellen Sie sicher, dass die ViewModel-Registrierung korrekt ist
     OCTOPRINT_VIEWMODELS.push({
         construct: XboxControllerViewModel,
-        dependencies: ["settingsViewModel"],
+        dependencies: ["settingsViewModel", "controlViewModel"],  // Fügen Sie controlViewModel hinzu
         elements: ["#tab_plugin_xbox_controller", "#settings_plugin_xbox_controller"]
     });
 });
