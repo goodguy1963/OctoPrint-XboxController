@@ -1,43 +1,24 @@
-<form class="form-horizontal">
-    <div>
-        <p>
-            <strong>Xbox Controller Plugin Status:</strong><br>
-            Das Plugin ist immer aktiv. Der Controller-Status wird im Plugin-Tab angezeigt.
-        </p>
+<form class="form-horizontal" id="settings_plugin_xbox_controller">
+    <h3>Xbox Controller Einstellungen</h3>
+    
+    <div class="control-group">
+        <label class="control-label">XY-Skalierungsfaktor:</label>
+        <div class="controls">
+            <input type="number" class="input-mini" data-bind="value: xyScaleFactor" min="1" max="500">
+        </div>
     </div>
-    <div>
-        <p>
-            <strong>Über das Plugin:</strong><br>
-            Mit diesem Plugin können Sie Ihren 3D-Drucker über einen Xbox-Controller steuern, 
-            inklusive eines Testmodus zur Live-Kalibrierung und Simulation der Befehle.
-        </p>
+    
+    <div class="control-group">
+        <label class="control-label">Z-Skalierungsfaktor:</label>
+        <div class="controls">
+            <input type="number" class="input-mini" data-bind="value: zScaleFactor" min="1" max="500">
+        </div>
     </div>
-    <div>
-        <h4>Installation</h4>
-        <ol>
-            <li>Plugin über den OctoPrint Plugin Manager installieren.</li>
-            <li>OctoPrint neustarten.</li>
-            <li>Den Xbox Controller anschließen (optional, da das Plugin auch im Offline-Modus läuft).</li>
-        </ol>
-    </div>
-    <div>
-        <h4>Konfiguration</h4>
-        <ol>
-            <li>Wechseln Sie in den "Xbox Controller"-Tab.</li>
-            <li>Aktivieren Sie den Testmodus zur Überprüfung der Werte.</li>
-            <li>Nutzen Sie die Schieberegler zur Feinjustierung der Skalierungsfaktoren.</li>
-        </ol>
-    </div>
-    <div class="form-group">
-        <label for="input_xy_scale">X/Y Skalierungsfaktor</label>
-        <input type="number" id="input_xy_scale" data-bind="value: settings.plugins.xbox_controller.xy_scale_factor" class="form-control" min="10" max="300" />
-    </div>
-    <div class="form-group">
-        <label for="input_z_scale">Z Skalierungsfaktor</label>
-        <input type="number" id="input_z_scale" data-bind="value: settings.plugins.xbox_controller.z_scale_factor" class="form-control" min="10" max="300" />
-    </div>
-    <div class="form-group">
-        <label for="input_e_scale">E Skalierungsfaktor</label>
-        <input type="number" id="input_e_scale" data-bind="value: settings.plugins.xbox_controller.e_scale_factor" class="form-control" min="10" max="300" />
+    
+    <div class="control-group">
+        <label class="control-label">E-Skalierungsfaktor:</label>
+        <div class="controls">
+            <input type="number" class="input-mini" data-bind="value: eScaleFactor" min="1" max="500">
+        </div>
     </div>
 </form>

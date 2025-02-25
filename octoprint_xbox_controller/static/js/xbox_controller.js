@@ -148,11 +148,19 @@ $(function() {
 
             // ... existing code ...
         }
+
+        // Fügen Sie eine Initialisierungsfunktion hinzu
+        self.onAfterBinding = function() {
+            console.log("Xbox Controller Plugin UI wurde gebunden");
+            // Überprüfen Sie, ob die UI-Elemente korrekt geladen wurden
+            console.log("Tab-Element:", $("#tab_plugin_xbox_controller").length);
+            console.log("Settings-Element:", $("#settings_plugin_xbox_controller").length);
+        };
     }
 
     OCTOPRINT_VIEWMODELS.push({
         construct: XboxControllerViewModel,
         dependencies: ["settingsViewModel"],
-        elements: ["#tab_plugin_xbox_controller"]
+        elements: ["#tab_plugin_xbox_controller", "#settings_plugin_xbox_controller"]
     });
 });
