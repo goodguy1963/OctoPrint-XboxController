@@ -207,17 +207,14 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
     
     def handle_button_press(self, button_index):
         """Verarbeitet Tastendrücke des Controllers"""
-        # Beispiel-Implementierung für Tasten
+        # Reduzierte Implementierung für Tasten
         if button_index == 0:  # A-Taste
             self._printer.home(['x', 'y'])
         elif button_index == 1:  # B-Taste
             # Vollständiger Autohome für alle Achsen
             self._printer.home(['x', 'y', 'z'])
             self._logger.info("Autohome-Befehl gesendet")
-        elif button_index == 2:  # X-Taste
-            self._printer.extrude(5)
-        elif button_index == 3:  # Y-Taste
-            self._printer.extrude(-5)
+        # X- und Y-Tasten haben keine Funktion mehr
     
     # API-Endpunkte
     def get_api_commands(self):
