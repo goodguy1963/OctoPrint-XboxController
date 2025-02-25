@@ -2,6 +2,19 @@
 
 Dieses Plugin ermöglicht die Steuerung eines 3D-Druckers mit einem Xbox-Controller über OctoPrint.
 
+## Installation
+
+1. Installieren Sie das Plugin über den OctoPrint Plugin Manager:
+   - Gehen Sie zu Einstellungen > Plugin Manager > Weitere Plugins durchsuchen
+   - Fügen Sie diese URL ein: `https://github.com/goodguy1963/OctoPrint-XboxController/archive/main.zip`
+   - Klicken Sie auf "Installieren"
+
+2. Alternativ können Sie das Plugin auch direkt über den Plugin Manager installieren, wenn es im offiziellen Repository verfügbar ist.
+
+3. Starten Sie OctoPrint neu
+
+4. Schließen Sie einen Xbox-Controller an Ihren Raspberry Pi / Computer an
+
 ## Funktionen
 
 - Steuerung der Druckerbewegungen (X, Y, Z) mit dem Xbox-Controller
@@ -9,12 +22,6 @@ Dieses Plugin ermöglicht die Steuerung eines 3D-Druckers mit einem Xbox-Control
 - Variable Bewegungsgeschwindigkeit basierend auf der Joystick-Position (max. 10mm)
 - Einfache Konfiguration über die OctoPrint-Oberfläche
 - Testmodus zur Überprüfung der Controller-Eingaben
-
-## Installation
-
-1. Installieren Sie das Plugin über den OctoPrint Plugin Manager
-2. Starten Sie OctoPrint neu
-3. Schließen Sie einen Xbox-Controller an Ihren Raspberry Pi / Computer an
 
 ## Voraussetzungen
 
