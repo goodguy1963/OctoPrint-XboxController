@@ -1,58 +1,65 @@
-<div id="tab_plugin_xbox_controller" style="border: 3px solid red; padding: 10px;">
-    <h1 style="color: red;">Xbox Controller - DEBUG MODE</h1>
+<div id="tab_plugin_xbox_controller" style="border: 3px solid green; padding: 15px;">
+    <h3 style="color: green;">Xbox Controller Steuerung</h3>
     
+    <div class="row-fluid">
+        <div class="span12">
+            <div class="alert alert-info">
+                Controller Status: <span data-bind="text: controllerStatus"></span>
+            </div>
+        </div>
+    </div>
+
     <div class="row-fluid">
         <div class="span6">
             <div class="control-group">
-                <label class="control-label">Controller-Status:</label>
+                <label class="control-label">Testmodus:</label>
                 <div class="controls">
-                    <span data-bind="text: controllerStatus"></span>
-                </div>
-            </div>
-            
-            <div class="control-group">
-                <label class="control-label">Test-Modus:</label>
-                <div class="controls">
-                    <button class="btn" data-bind="click: toggleTestMode, css: {active: isTestMode}">
-                        <i class="fa" data-bind="css: {'fa-toggle-on': isTestMode(), 'fa-toggle-off': !isTestMode()}"></i>
-                        <span data-bind="text: isTestMode() ? 'Aktiviert' : 'Deaktiviert'"></span>
+                    <button class="btn" data-bind="click: toggleTestMode, css: {'btn-primary': isTestMode()}">
+                        <span data-bind="text: isTestMode() ? 'Testmodus deaktivieren' : 'Testmodus aktivieren'"></span>
                     </button>
                 </div>
             </div>
+            
+            <div data-bind="visible: isTestMode()">
+                <h4>Controller-Werte (nur im Testmodus):</h4>
+                <table class="table table-bordered table-striped">
+                    <thead>
+                        <tr>
+                            <th>Achse</th>
+                            <th>Wert</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>X:</td>
+                            <td data-bind="text: currentX"></td>
+                        </tr>
+                        <tr>
+                            <td>Y:</td>
+                            <td data-bind="text: currentY"></td>
+                        </tr>
+                        <tr>
+                            <td>Z:</td>
+                            <td data-bind="text: currentZ"></td>
+                        </tr>
+                        <tr>
+                            <td>E:</td>
+                            <td data-bind="text: currentE"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
         
-        <div class="span6" data-bind="visible: isTestMode">
-            <h3>Controller-Werte (Test-Modus)</h3>
-            <div class="row-fluid">
-                <div class="span6">
-                    <div class="control-group">
-                        <label class="control-label">X:</label>
-                        <div class="controls">
-                            <span data-bind="text: currentX"></span>
-                        </div>
-                    </div>
-                    <div class="control-group">
-                        <label class="control-label">Y:</label>
-                        <div class="controls">
-                            <span data-bind="text: currentY"></span>
-                        </div>
-                    </div>
-                </div>
-                <div class="span6">
-                    <div class="control-group">
-                        <label class="control-label">Z:</label>
-                        <div class="controls">
-                            <span data-bind="text: currentZ"></span>
-                        </div>
-                    </div>
-                    <div class="control-group">
-                        <label class="control-label">E:</label>
-                        <div class="controls">
-                            <span data-bind="text: currentE"></span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="span6">
+            <h4>Controller-Belegung:</h4>
+            <ul>
+                <li><strong>Rechter Joystick:</strong> X/Y-Achsen bewegen</li>
+                <li><strong>Linker Joystick:</strong> Extruder steuern</li>
+                <li><strong>Trigger (LT/RT):</strong> Z-Achse bewegen</li>
+                <li><strong>A-Taste:</strong> Home X/Y</li>
+                <li><strong>B-Taste:</strong> Home X/Y/Z</li>
+            </ul>
         </div>
     </div>
 </div>

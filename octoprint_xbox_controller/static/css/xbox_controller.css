@@ -8,6 +8,16 @@ body {
     padding: 15px;
     background-color: #fff;
     border: 1px solid #ddd;
+    margin-bottom: 15px;
+}
+
+#tab_plugin_xbox_controller table {
+    width: 100%;
+    max-width: 300px;
+}
+
+#tab_plugin_xbox_controller .alert {
+    padding: 8px 15px;
 }
 
 .table {
@@ -24,6 +34,14 @@ body {
 #settings_plugin_xbox_controller {
     border: 1px dashed #ccc;
     padding: 10px;
+    margin-bottom: 10px;
+}
+
+#settings_plugin_xbox_controller input {
+    width: 80px;
+}
+
+#settings_plugin_xbox_controller .control-group {
     margin-bottom: 10px;
 }
 

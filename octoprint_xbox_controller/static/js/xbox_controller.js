@@ -3,6 +3,10 @@ console.log("Xbox Controller Plugin: JavaScript-Datei wird geladen");
 $(function() {
     console.log("Xbox Controller Plugin: DOM bereit");
     
+    // Überprüfen, ob die Elemente existieren
+    console.log("Tab-Element beim Start:", $("#tab_plugin_xbox_controller").length);
+    console.log("Settings-Element beim Start:", $("#settings_plugin_xbox_controller").length);
+    
     function XboxControllerViewModel(parameters) {
         var self = this;
         
@@ -110,11 +114,46 @@ $(function() {
         };
 
         function setupGamepad() {
-            // ... existing code ...
-
+            // Prüfe, ob Gamepad API verfügbar ist
+            if (!navigator.getGamepads) {
+                console.warn("Xbox Controller Plugin: Gamepad API nicht unterstützt");
+                return;
+            }
+            
+            console.log("Xbox Controller Plugin: Gamepad-Setup gestartet");
+            
+            // Status-Variable für den Controller
+            var lastTimestamp = 0;
+            var requestAnimationId = null;
+            var buttonStates = {}; // Speichert den Status der Buttons, um wiederholtes Auslösen zu vermeiden
+            
+            // Funktion zur kontinuierlichen Prüfung des Gamepad-Status
             function checkGamepadStatus() {
-                // ... existing code ...
-
+                var gamepads = navigator.getGamepads();
+                var gamepad = null;
+                
+                // Finde den ersten verbundenen Controller
+                for (var i = 0; i < gamepads.length; i++) {
+                    if (gamepads[i] && gamepads[i].connected) {
+                        gamepad = gamepads[i];
+                        break;
+                    }
+                }
+                
+                if (!gamepad) {
+                    // Kein Controller verbunden, versuche es später erneut
+                    requestAnimationId = requestAnimationFrame(checkGamepadStatus);
+                    return;
+                }
+                
+                // Überprüfe, ob sich der Controller seit dem letzten Frame aktualisiert hat
+                if (gamepad.timestamp === lastTimestamp) {
+                    requestAnimationId = requestAnimationFrame(checkGamepadStatus);
+                    return;
+                }
+                
+                lastTimestamp = gamepad.timestamp;
+                
                 // Bewegungsfunktionen mit variabler Distanz basierend auf Joystick/Trigger-Position
                 function moveX(value) {
                     // Berechne Distanz basierend auf Joystick-Position (max 10mm)
@@ -145,9 +184,19 @@ $(function() {
                         self.control.sendJogCommand("z", -distance);
                     }
                 }
-
-                // ... existing code ...
-
+                
+                function moveExtruder(value) {
+                    // Berechne Extruder-Distanz (kleiner als bei XYZ)
+                    var distance = Math.min(Math.abs(value) * 5, 5).toFixed(1);
+                    if (value > 0.1) {
+                        self.control.sendExtrudeCommand(distance);
+                    } else if (value < -0.1) {
+                        self.control.sendExtrudeCommand(-distance);
+                    }
+                }
+                
+                // Controller-Inputs verarbeiten
+                
                 // Linker Joystick für X/Y-Bewegung mit variabler Distanz
                 if (Math.abs(gamepad.axes[0]) > 0.1) {
                     moveX(gamepad.axes[0]);
@@ -170,12 +219,64 @@ $(function() {
                 if (gamepad.buttons[7].value > 0.1) {
                     moveZ(gamepad.buttons[7].value);
                 }
-
-                // ... existing code ...
+                
+                // Button-Funktionen
+                // A-Button - Home X/Y
+                if (gamepad.buttons[0].pressed && !buttonStates[0]) {
+                    buttonStates[0] = true;
+                    self.control.sendHomeCommand(['x', 'y']);
+                } else if (!gamepad.buttons[0].pressed) {
+                    buttonStates[0] = false;
+                }
+                
+                // B-Button - Home alle Achsen
+                if (gamepad.buttons[1].pressed && !buttonStates[1]) {
+                    buttonStates[1] = true;
+                    self.control.sendHomeCommand(['x', 'y', 'z']);
+                } else if (!gamepad.buttons[1].pressed) {
+                    buttonStates[1] = false;
+                }
+                
+                // Extruder-Steuerung mit linkem Joystick (X-Achse)
+                if (Math.abs(gamepad.axes[0]) > 0.1) {
+                    moveExtruder(gamepad.axes[0]);
+                }
+                
+                // Nächster Frame
+                requestAnimationId = requestAnimationFrame(checkGamepadStatus);
             }
-
-            // ... existing code ...
+            
+            // Starte die Gamepad-Überwachung
+            checkGamepadStatus();
+            
+            // Event-Listener für Controller-Verbindungen
+            window.addEventListener("gamepadconnected", function(e) {
+                console.log("Xbox Controller Plugin: Gamepad verbunden:", e.gamepad.id);
+            });
+            
+            window.addEventListener("gamepaddisconnected", function(e) {
+                console.log("Xbox Controller Plugin: Gamepad getrennt:", e.gamepad.id);
+            });
+            
+            // Cleanup-Funktion
+            return function cleanup() {
+                if (requestAnimationId) {
+                    cancelAnimationFrame(requestAnimationId);
+                }
+            };
         }
+        
+        // Starte das Gamepad-Setup, wenn das DOM bereit ist
+        $(document).ready(function() {
+            var cleanup = setupGamepad();
+            
+            // Bereinige beim Verlassen der Seite
+            $(window).on('beforeunload', function() {
+                if (cleanup && typeof cleanup === 'function') {
+                    cleanup();
+                }
+            });
+        });
     }
 
     // Stellen Sie sicher, dass die ViewModel-Registrierung korrekt ist
