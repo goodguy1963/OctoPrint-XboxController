@@ -8,6 +8,7 @@ import subprocess
 import glob
 import re  # Added for regex pattern matching
 import select  # Add missing select module for evdev
+import traceback  # Add for better error reporting
 
 import octoprint.plugin
 import flask
@@ -85,7 +86,7 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
             max_z=100,
             use_evdev=EVDEV_AVAILABLE,  # Default to evdev if available
             usb_detection_method="auto",  # Can be "auto", "pygame", "evdev", "xboxdrv"
-            debug_logging=False,  # Added debug logging option
+            debug_logging=True,  # Changed default to True for better diagnostics
             auto_reconnect=True   # Added auto reconnect option
         )
 
@@ -181,76 +182,162 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
     def _process_controller_values(self, data):
         """Process controller values and send commands to printer"""
         try:
+            # Enhanced debug logging
+            debug_mode = self._settings.get_boolean(["debug_logging"], False)
+            if debug_mode:
+                self._logger.info("Processing controller values: %s", data)
+            
             # Only process if printer is operational and not printing
             if not self._printer.is_operational():
-                self._logger.debug("Printer not operational, ignoring controller values")
+                self._logger.info("Printer not operational (state: %s), ignoring controller values", 
+                                 self._printer.get_state_string())
                 return
             
             if self._printer.is_printing():
-                self._logger.debug("Printer is busy printing, ignoring controller values")
+                self._logger.info("Printer is busy printing (state: %s), ignoring controller values", 
+                                 self._printer.get_state_string())
                 return
             
             if self.test_mode:
-                self._logger.debug("Test mode active, not sending commands")
+                self._logger.info("Test mode active, not sending commands for values: %s", data)
                 return
+            
+            # Log all significant input values
+            significant_input = False
                 
             # X movement (right joystick X)
             x_val = float(data.get("x", 0))
             if abs(x_val) > 0.1:
+                significant_input = True
                 # Scale the movement based on the joystick value
                 distance = min(abs(x_val) * (self.xy_scale_factor / 100), 10)
                 distance = round(distance, 1)
                 
                 # Send the actual G-code command
                 self._logger.info("Sending X jog command: %s", distance if x_val > 0 else -distance)
-                self._printer.commands("G91")  # Set to relative positioning
-                self._printer.commands("G0 X{} F3000".format(distance if x_val > 0 else -distance))
-                self._printer.commands("G90")  # Return to absolute positioning
+                try:
+                    self._send_movement_command("X", distance if x_val > 0 else -distance, 3000)
+                    self._plugin_manager.send_plugin_message(self._identifier, {
+                        "type": "command_sent", 
+                        "axis": "X", 
+                        "value": distance if x_val > 0 else -distance
+                    })
+                except Exception as e:
+                    self._logger.error("Error sending X movement command: %s", str(e))
+                    self._logger.error(traceback.format_exc())
                     
             # Y movement (right joystick Y)
             y_val = float(data.get("y", 0))
             if abs(y_val) > 0.1:
+                significant_input = True
                 distance = min(abs(y_val) * (self.xy_scale_factor / 100), 10)
                 distance = round(distance, 1)
                 
                 self._logger.info("Sending Y jog command: %s", distance if y_val < 0 else -distance)
-                self._printer.commands("G91")  # Set to relative positioning
-                self._printer.commands("G0 Y{} F3000".format(distance if y_val < 0 else -distance))  # Y is inverted
-                self._printer.commands("G90")  # Return to absolute positioning
+                try:
+                    self._send_movement_command("Y", distance if y_val < 0 else -distance, 3000)
+                    self._plugin_manager.send_plugin_message(self._identifier, {
+                        "type": "command_sent", 
+                        "axis": "Y", 
+                        "value": distance if y_val < 0 else -distance
+                    })
+                except Exception as e:
+                    self._logger.error("Error sending Y movement command: %s", str(e))
+                    self._logger.error(traceback.format_exc())
                     
             # Z movement (triggers)
             z_val = float(data.get("z", 0))
             if abs(z_val) > 0.1:
+                significant_input = True
                 distance = min(abs(z_val) * (self.z_scale_factor / 100), 5)  # Z moves should be smaller
                 distance = round(distance, 1)
                 
                 self._logger.info("Sending Z jog command: %s", distance if z_val > 0 else -distance)
-                self._printer.commands("G91")  # Set to relative positioning
-                self._printer.commands("G0 Z{} F600".format(distance if z_val > 0 else -distance))  # Z should move slowly
-                self._printer.commands("G90")  # Return to absolute positioning
+                try:
+                    self._send_movement_command("Z", distance if z_val > 0 else -distance, 600)
+                    self._plugin_manager.send_plugin_message(self._identifier, {
+                        "type": "command_sent", 
+                        "axis": "Z", 
+                        "value": distance if z_val > 0 else -distance
+                    })
+                except Exception as e:
+                    self._logger.error("Error sending Z movement command: %s", str(e))
+                    self._logger.error(traceback.format_exc())
                     
             # Extruder movement (left joystick X)
             e_val = float(data.get("e", 0))
             if abs(e_val) > 0.1:
+                significant_input = True
                 distance = min(abs(e_val) * (self.e_scale_factor / 100), 3)  # Extrusion should be limited
                 distance = round(distance, 1)
                 
                 self._logger.info("Sending extruder command: %s", distance if e_val > 0 else -distance)
-                self._printer.commands("G91")  # Set to relative positioning
-                if e_val > 0:
-                    self._printer.commands("G1 E{} F300".format(distance))  # Extrude slowly
-                else:
-                    self._printer.commands("G1 E-{} F1200".format(distance))  # Retract faster
-                self._printer.commands("G90")  # Return to absolute positioning
+                try:
+                    # Use direct G-code for extrusion to ensure it works
+                    if e_val > 0:
+                        self._printer.commands([
+                            "G91",  # Relative positioning
+                            f"G1 E{distance} F300",  # Extrude slowly
+                            "G90"   # Back to absolute positioning
+                        ])
+                    else:
+                        self._printer.commands([
+                            "G91",  # Relative positioning
+                            f"G1 E-{distance} F1200",  # Retract faster
+                            "G90"   # Back to absolute positioning
+                        ])
+                    self._plugin_manager.send_plugin_message(self._identifier, {
+                        "type": "command_sent", 
+                        "axis": "E", 
+                        "value": distance if e_val > 0 else -distance
+                    })
+                except Exception as e:
+                    self._logger.error("Error sending E movement command: %s", str(e))
+                    self._logger.error(traceback.format_exc())
                     
             # Handle buttons
             buttons = data.get("buttons", {})
             for btn_idx, pressed in buttons.items():
                 if pressed:
+                    significant_input = True
                     self.handle_button_press(int(btn_idx))
+                    
+            if debug_mode and not significant_input:
+                self._logger.debug("No significant controller input detected")
                         
         except Exception as e:
             self._logger.error("Error processing controller values: %s", str(e))
+            self._logger.error(traceback.format_exc())
+
+    def _send_movement_command(self, axis, distance, speed):
+        """Helper method to send a movement command and handle errors"""
+        try:
+            # Validate parameters
+            if not isinstance(axis, str) or axis not in ["X", "Y", "Z", "E"]:
+                self._logger.error("Invalid axis: %s", axis)
+                return
+                
+            if not isinstance(distance, (int, float)):
+                self._logger.error("Invalid distance: %s", distance)
+                return
+                
+            if not isinstance(speed, (int, float)) or speed <= 0:
+                self._logger.error("Invalid speed: %s", speed)
+                speed = 1000  # Use a safe default speed
+            
+            # Send commands as a group to ensure they're executed together
+            self._logger.info("Sending %s axis movement: %s at speed %s", axis, distance, speed)
+            self._printer.commands([
+                "G91",  # Set to relative positioning
+                f"G0 {axis}{distance} F{speed}",
+                "G90"   # Return to absolute positioning
+            ])
+            
+            return True
+        except Exception as e:
+            self._logger.error("Error in _send_movement_command: %s", str(e))
+            self._logger.error(traceback.format_exc())
+            return False
 
     def update_status(self, status):
         self._plugin_manager.send_plugin_message(
@@ -264,6 +351,14 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         self._logger.info("Überprüfe Template-Konfiguration...")
         self._logger.info("Template-Configs: %s", self.get_template_configs())
         self._logger.info("Asset-Configs: %s", self.get_assets())
+        
+        # Enhanced controller detection info
+        self._logger.info("===== Controller Detection Info =====")
+        self._logger.info("Python version: %s", sys.version)
+        self._logger.info("Platform: %s", sys.platform)
+        self._logger.info("PYGAME_AVAILABLE: %s", PYGAME_AVAILABLE)
+        self._logger.info("EVDEV_AVAILABLE: %s", EVDEV_AVAILABLE)
+        self._logger.info("USB_UTILS_AVAILABLE: %s", USB_UTILS_AVAILABLE)
         
         # Log pygame version and platform information for debugging
         if PYGAME_AVAILABLE:
@@ -581,6 +676,14 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="24c6", MODE="0666", GROUP="input" # PowerA
             # Log all found devices
             for device in devices:
                 self._logger.info("Input device: %s at %s", device.name, device.path)
+                # Check file permissions
+                if os.path.exists(device.path):
+                    try:
+                        file_stat = os.stat(device.path)
+                        self._logger.info("Device permissions: %o, owner: %d", file_stat.st_mode & 0o777, file_stat.st_uid)
+                    except Exception as e:
+                        self._logger.error("Cannot check permissions: %s", str(e))
+                        
                 # Check if it's a game controller or joystick
                 if any(keyword in device.name.lower() for keyword in ['xbox', 'controller', 'gamepad', 'joystick', 'joypad']):
                     self._logger.info("⭐ Potential controller device: %s", device.name)
@@ -588,6 +691,7 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="24c6", MODE="0666", GROUP="input" # PowerA
                     controller_device = device
                     self.controller_initialized = True
                     device_found = True
+                    self.controller_type = device.name  # Store the specific controller model
                     self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Verbunden"})
                     break
             
@@ -718,6 +822,7 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="24c6", MODE="0666", GROUP="input" # PowerA
                 
         except Exception as e:
             self._logger.error("Fatal error in evdev controller worker: %s", str(e))
+            self._logger.error(traceback.format_exc())
             if try_only:
                 return False
             return False
@@ -742,7 +847,6 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="24c6", MODE="0666", GROUP="input" # PowerA
                             if name == 'a':  # A button
                                 self.handle_button_press(0)
                             elif name == 'b':  # B button
-                                self.handle_button_press(1)
                 
             elif event.type == evdev.ecodes.EV_ABS:  # Axis event
                 # Get axis code and value
@@ -856,14 +960,35 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="24c6", MODE="0666", GROUP="input" # PowerA
             return
             
         try:
+            self._logger.info("Button %s pressed, sending command", button_index)
+            
             if button_index == 0:  # A-Taste
                 self._logger.info("Sending Home X/Y command")
-                self._printer.commands("G28 X Y")
+                try:
+                    self._printer.commands("G28 X Y")
+                    self._plugin_manager.send_plugin_message(self._identifier, {
+                        "type": "command_sent",
+                        "command": "Home X/Y"
+                    })
+                except Exception as e:
+                    self._logger.error("Error sending Home X/Y command: %s", str(e))
+                    self._logger.error(traceback.format_exc())
+                    
             elif button_index == 1:  # B-Taste
                 self._logger.info("Sending Home All command")
-                self._printer.commands("G28")
+                try:
+                    self._printer.commands("G28")
+                    self._plugin_manager.send_plugin_message(self._identifier, {
+                        "type": "command_sent",
+                        "command": "Home All"
+                    })
+                except Exception as e:
+                    self._logger.error("Error sending Home All command: %s", str(e))
+                    self._logger.error(traceback.format_exc())
+                
         except Exception as e:
             self._logger.error("Error handling button press: %s", str(e))
+            self._logger.error(traceback.format_exc())
 
 __plugin_name__ = "Xbox Controller Plugin"
 __plugin_identifier__ = "xbox_controller"

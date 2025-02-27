@@ -15,6 +15,7 @@ Control your 3D printer directly with an Xbox controller through OctoPrint!
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Connection Methods](#connection-methods)
+- [Controller Detection Methods](#controller-detection-methods)
 - [Platform Compatibility](#platform-compatibility)
 - [Controller Mapping](#controller-mapping)
 - [Configuration](#configuration)
@@ -110,12 +111,45 @@ This plugin is designed with flexibility in mind, providing two ways to use your
 
 ### Using Both Methods Simultaneously
 
-The plugin will automatically detect controllers connected via either method, allowing for great flexibility:
+The plugin automatically detects which connection method is active and will prioritize them accordingly. You can seamlessly switch between methods without changing any settings.
 
-- Use a controller plugged into the Pi for local control
-- Connect another controller to your laptop for remote adjustments
-- The plugin will clearly show which connection method is active
-- Seamlessly switch between connection methods as needed
+## 🕹️ Controller Detection Methods
+
+This plugin supports multiple ways to detect and connect to your controller:
+
+### Auto Detection (Default)
+
+- The plugin will automatically choose the best detection method for your system
+- On Linux/Raspberry Pi: First tries evdev, then falls back to pygame if needed
+- On Windows/macOS: Uses pygame for controller detection
+- **Best For**: Most users who want a "plug and play" experience
+
+### Evdev (Linux Only)
+
+- Uses Linux's native evdev interface for direct controller access
+- **Advantages**:
+  - ✅ Low-level access with minimal overhead
+  - ✅ Better support for a variety of controllers
+  - ✅ Reliable reconnection if controller is unplugged
+- **Requirements**: Python evdev package (automatically installed)
+- **Best For**: Linux/Raspberry Pi users who need maximum reliability
+
+### PyGame
+
+- Uses the pygame library for controller detection and input
+- **Advantages**:
+  - ✅ Cross-platform support (Windows, macOS, Linux)
+  - ✅ Wide controller compatibility
+- **Best For**: Windows and macOS users, or when evdev isn't available
+
+### XBoxDrv (Experimental)
+
+- Uses the xboxdrv driver specifically for Xbox controllers
+- **Advantages**:
+  - ✅ Specialized support for Xbox controllers
+  - ✅ May support controllers that other methods don't
+- **Requirements**: xboxdrv must be installed on your system
+- **Best For**: Advanced users with Xbox controllers that aren't detected by other methods
 
 ## 🖥️ Platform Compatibility
 
@@ -154,7 +188,10 @@ In the plugin settings, you can adjust the following parameters:
 - **XY Scaling Factor**: Affects the sensitivity of X/Y movement (default: 150)
 - **Z Scaling Factor**: Affects the sensitivity of Z movement (default: 150)
 - **E Scaling Factor**: Affects the sensitivity of extruder movement (default: 150)
+- **Max Z Height**: Sets a safety limit for Z axis movement (default: 100mm)
 - **Controller Detection Method**: Choose between automatic, evdev (Linux only), or pygame
+- **Enable Debug Logging**: Turn on detailed logging for troubleshooting
+- **Auto Reconnect**: Automatically try to reconnect to controller if connection is lost
 
 Higher values increase sensitivity, while lower values provide finer control.
 
@@ -258,6 +295,12 @@ A: Yes, through browser detection. The plugin will automatically use your PC-con
 
 **Q: Do I need to set up USB permissions manually?**  
 A: No, the plugin attempts to set up required permissions during installation. Only if that fails would manual setup be needed.
+
+**Q: Which detection method should I use?**  
+A: Start with "Auto" and let the plugin decide. If you experience issues, try evdev on Linux or pygame on Windows/macOS.
+
+**Q: Can I adjust how sensitive the controller is?**  
+A: Yes, use the Scale Factors in the plugin settings to adjust sensitivity for each axis.
 
 ## 🤝 Contributing
 
