@@ -252,69 +252,15 @@ $(function() {
                         // Rechter Joystick X/Y - Bewegung steuern
                         if (Math.abs(gamepad.axes[2]) > 0.1) {
                             controllerData.x = gamepad.axes[2];
-                            
-                            if (!lastAxesValues.x || Math.abs(lastAxesValues.x - gamepad.axes[2]) > 0.05) {
-                                lastAxesValues.x = gamepad.axes[2];
-                                
-                                // Berechne X-Distanz basierend auf Joystick-Position
-                                var distanceX = Math.min(Math.abs(gamepad.axes[2]) * 10, 10).toFixed(1);
-                                if (!self.isTestMode()) { // Nur im Nicht-Testmodus bewegen
-                                    if (gamepad.axes[2] > 0.1) {
-                                        self.control.sendJogCommand("x", distanceX);
-                                        console.log("Xbox Controller: X +", distanceX);
-                                    } else if (gamepad.axes[2] < -0.1) {
-                                        self.control.sendJogCommand("x", -distanceX);
-                                        console.log("Xbox Controller: X -", distanceX);
-                                    }
-                                }
-                            }
-                        } else {
-                            lastAxesValues.x = 0;
                         }
                         
                         if (Math.abs(gamepad.axes[3]) > 0.1) {
                             controllerData.y = gamepad.axes[3];
-                            
-                            if (!lastAxesValues.y || Math.abs(lastAxesValues.y - gamepad.axes[3]) > 0.05) {
-                                lastAxesValues.y = gamepad.axes[3];
-                                
-                                // Berechne Y-Distanz basierend auf Joystick-Position
-                                var distanceY = Math.min(Math.abs(gamepad.axes[3]) * 10, 10).toFixed(1);
-                                if (!self.isTestMode()) { // Nur im Nicht-Testmodus bewegen
-                                    if (gamepad.axes[3] > 0.1) {
-                                        self.control.sendJogCommand("y", -distanceY); // Y-Achse invertieren
-                                        console.log("Xbox Controller: Y -", distanceY);
-                                    } else if (gamepad.axes[3] < -0.1) {
-                                        self.control.sendJogCommand("y", distanceY); // Y-Achse invertieren
-                                        console.log("Xbox Controller: Y +", distanceY);
-                                    }
-                                }
-                            }
-                        } else {
-                            lastAxesValues.y = 0;
                         }
                         
                         // Linker Joystick X - Extruder steuern
                         if (Math.abs(gamepad.axes[0]) > 0.1) {
                             controllerData.e = gamepad.axes[0];
-                            
-                            if (!lastAxesValues.e || Math.abs(lastAxesValues.e - gamepad.axes[0]) > 0.05) {
-                                lastAxesValues.e = gamepad.axes[0];
-                                
-                                // Berechne Extruder-Distanz (kleiner als bei XYZ)
-                                var distanceE = Math.min(Math.abs(gamepad.axes[0]) * 5, 5).toFixed(1);
-                                if (!self.isTestMode()) { // Nur im Nicht-Testmodus bewegen
-                                    if (gamepad.axes[0] > 0.1) {
-                                        self.control.sendExtrudeCommand(distanceE);
-                                        console.log("Xbox Controller: Extruder +", distanceE);
-                                    } else if (gamepad.axes[0] < -0.1) {
-                                        self.control.sendExtrudeCommand(-distanceE);
-                                        console.log("Xbox Controller: Extruder -", distanceE);
-                                    }
-                                }
-                            }
-                        } else {
-                            lastAxesValues.e = 0;
                         }
                     }
                     
@@ -322,85 +268,60 @@ $(function() {
                     if (gamepad.buttons && gamepad.buttons.length >= 8) {
                         // Linker Trigger (LT)
                         if (gamepad.buttons[6].value > 0.1) {
-                            controllerData.z -= gamepad.buttons[6].value; // Negative z-Richtung
-                            
-                            if (!lastAxesValues.lt || Math.abs(lastAxesValues.lt - gamepad.buttons[6].value) > 0.05) {
-                                lastAxesValues.lt = gamepad.buttons[6].value;
-                                
-                                // Berechne Z-Distanz basierend auf Trigger-Position
-                                var distanceZ = Math.min(Math.abs(gamepad.buttons[6].value) * 10, 10).toFixed(1);
-                                if (!self.isTestMode()) { // Nur im Nicht-Testmodus bewegen
-                                    self.control.sendJogCommand("z", -distanceZ);
-                                    console.log("Xbox Controller: Z -", distanceZ);
-                                }
-                            }
-                        } else {
-                            lastAxesValues.lt = 0;
+                            controllerData.z -= gamepad.buttons[6].value;
                         }
                         
                         // Rechter Trigger (RT)
                         if (gamepad.buttons[7].value > 0.1) {
-                            controllerData.z += gamepad.buttons[7].value; // Positive z-Richtung
-                            
-                            if (!lastAxesValues.rt || Math.abs(lastAxesValues.rt - gamepad.buttons[7].value) > 0.05) {
-                                lastAxesValues.rt = gamepad.buttons[7].value;
-                                
-                                // Berechne Z-Distanz basierend auf Trigger-Position
-                                var distanceZ = Math.min(Math.abs(gamepad.buttons[7].value) * 10, 10).toFixed(1);
-                                if (!self.isTestMode()) { // Nur im Nicht-Testmodus bewegen
-                                    self.control.sendJogCommand("z", distanceZ);
-                                    console.log("Xbox Controller: Z +", distanceZ);
-                                }
-                            }
-                        } else {
-                            lastAxesValues.rt = 0;
-                        }
-                    }
-                    
-                    // Verarbeite Button-Inputs
-                    if (gamepad.buttons && gamepad.buttons.length >= 2) {
-                        // A-Button - Home X/Y
-                        if (gamepad.buttons[0].pressed && !buttonStates[0]) {
-                            buttonStates[0] = true;
-                            if (!self.isTestMode()) { // Nur im Nicht-Testmodus ausführen
-                                self.control.sendHomeCommand(['x', 'y']);
-                                console.log("Xbox Controller: Home X/Y");
-                            }
-                        } else if (!gamepad.buttons[0].pressed) {
-                            buttonStates[0] = false;
+                            controllerData.z += gamepad.buttons[7].value;
                         }
                         
-                        // B-Button - Home alle Achsen
-                        if (gamepad.buttons[1].pressed && !buttonStates[1]) {
-                            buttonStates[1] = true;
-                            if (!self.isTestMode()) { // Nur im Nicht-Testmodus ausführen
-                                self.control.sendHomeCommand(['x', 'y', 'z']);
-                                console.log("Xbox Controller: Home alle Achsen");
-                            }
-                        } else if (!gamepad.buttons[1].pressed) {
-                            buttonStates[1] = false;
-                        }
+                        // Buttons erfassen
+                        if (gamepad.buttons[0].pressed) controllerData.buttons[0] = true;
+                        if (gamepad.buttons[1].pressed) controllerData.buttons[1] = true;
                     }
                     
-                    // Immer Daten für Test-/Debugzwecke sammeln und aktualisieren
-                    // Wichtig: Dies unabhängig vom Testmodus tun
-                    self._plugin_manager.send_plugin_message = self._plugin_manager.send_plugin_message || function() {};
-                    self._currentX = controllerData.x;
-                    self._currentY = controllerData.y;
-                    self._currentZ = controllerData.z;
-                    self._currentE = controllerData.e;
-                    
-                    // Aktualisiere die Anzeige
+                    // Always update UI with controller values
                     self.currentX(controllerData.x.toFixed(2));
                     self.currentY(controllerData.y.toFixed(2));
                     self.currentZ(controllerData.z.toFixed(2));
                     self.currentE(controllerData.e.toFixed(2));
                     
-                    // Debug-Log
-                    if (self.isTestMode() && (Math.abs(controllerData.x) > 0.1 || Math.abs(controllerData.y) > 0.1 || 
-                        Math.abs(controllerData.z) > 0.1 || Math.abs(controllerData.e) > 0.1)) {
-                        console.log("Controller Values:", controllerData);
+                    // Send to backend if we have any significant input
+                    if (Math.abs(controllerData.x) > 0.05 || 
+                        Math.abs(controllerData.y) > 0.05 || 
+                        Math.abs(controllerData.z) > 0.05 || 
+                        Math.abs(controllerData.e) > 0.05 ||
+                        Object.keys(controllerData.buttons).length > 0) {
+                        
+                        // Send to backend using API
+                        $.ajax({
+                            url: API_BASEURL + "plugin/xbox_controller",
+                            type: "POST",
+                            dataType: "json",
+                            data: JSON.stringify({
+                                command: "controllerValues",
+                                x: controllerData.x,
+                                y: controllerData.y,
+                                z: controllerData.z,
+                                e: controllerData.e,
+                                buttons: controllerData.buttons
+                            }),
+                            contentType: "application/json; charset=UTF-8",
+                            error: function(xhr, status, error) {
+                                console.error("Xbox Controller: Error sending values:", error);
+                            }
+                        });
+                        
+                        // Debug-Log
+                        if (self.isTestMode() && frameCounter % 10 === 0) {
+                            console.log("Controller Values sent to backend:", controllerData);
+                        }
                     }
+                    
+                    // The old direct control logic can be removed or left commented
+                    // We'll now handle everything through the Python backend
+                    
                 } catch (e) {
                     console.error("Xbox Controller Plugin: Fehler bei der Verarbeitung der Gamepad-Daten", e);
                 }

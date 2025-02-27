@@ -76,72 +76,109 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
             
         elif command == "controllerValues":
             # Handle controller values from JavaScript
-            self._logger.debug("Received controller values: x=%s, y=%s, z=%s, e=%s", 
-                            data.get("x", 0), data.get("y", 0), data.get("z", 0), data.get("e", 0))
-            
-            # Always forward to UI for display
-            self._plugin_manager.send_plugin_message(self._identifier, {
-                "type": "controller_values",
-                "x": float(data.get("x", 0)),
-                "y": float(data.get("y", 0)),
-                "z": float(data.get("z", 0)),
-                "e": float(data.get("e", 0))
-            })
-            
-            # If not in test mode, process movement commands
-            if not self.test_mode:
-                self._process_controller_values(data)
+            try:
+                # Extract values with proper error handling
+                x_val = float(data.get("x", 0))
+                y_val = float(data.get("y", 0))
+                z_val = float(data.get("z", 0))
+                e_val = float(data.get("e", 0))
                 
-            return flask.jsonify(success=True)
+                self._logger.debug("Received controller values: x=%.2f, y=%.2f, z=%.2f, e=%.2f", 
+                                x_val, y_val, z_val, e_val)
+                
+                # Always forward to UI for display - this is critical for test mode
+                self._plugin_manager.send_plugin_message(self._identifier, {
+                    "type": "controller_values",
+                    "x": x_val,
+                    "y": y_val,
+                    "z": z_val,
+                    "e": e_val
+                })
+                
+                # If not in test mode, process movement commands
+                if not self.test_mode:
+                    self._process_controller_values(data)
+                else:
+                    self._logger.debug("Test mode active, not sending printer commands")
+                    
+                return flask.jsonify(success=True)
+            except Exception as e:
+                self._logger.error("Error processing controller values: %s", str(e))
+                return flask.jsonify(error="Error processing controller values")
         
         return flask.jsonify(error="Unknown command")
 
     def _process_controller_values(self, data):
         """Process controller values and send commands to printer"""
         try:
-            # Only process if printer is operational
-            if not self._printer.is_operational() or self._printer.is_printing():
+            # Only process if printer is operational and not printing
+            if not self._printer.is_operational():
+                self._logger.debug("Printer not operational, ignoring controller values")
+                return
+            
+            if self._printer.is_printing():
+                self._logger.debug("Printer is busy printing, ignoring controller values")
+                return
+            
+            if self.test_mode:
+                self._logger.debug("Test mode active, not sending commands")
                 return
                 
-            # X movement
+            # X movement (right joystick X)
             x_val = float(data.get("x", 0))
             if abs(x_val) > 0.1:
-                distance = min(abs(x_val) * 10, 10)
+                # Scale the movement based on the joystick value
+                distance = min(abs(x_val) * (self.xy_scale_factor / 100), 10)
                 distance = round(distance, 1)
-                self._printer.jog({"x": distance if x_val > 0 else -distance})
-                self._logger.debug("X movement: %s", distance if x_val > 0 else -distance)
                 
-            # Y movement
+                # Send the actual G-code command
+                self._logger.info("Sending X jog command: %s", distance if x_val > 0 else -distance)
+                self._printer.commands("G91")  # Set to relative positioning
+                self._printer.commands("G0 X{} F3000".format(distance if x_val > 0 else -distance))
+                self._printer.commands("G90")  # Return to absolute positioning
+                    
+            # Y movement (right joystick Y)
             y_val = float(data.get("y", 0))
             if abs(y_val) > 0.1:
-                distance = min(abs(y_val) * 10, 10)
+                distance = min(abs(y_val) * (self.xy_scale_factor / 100), 10)
                 distance = round(distance, 1)
-                self._printer.jog({"y": distance if y_val > 0 else -distance})
-                self._logger.debug("Y movement: %s", distance if y_val > 0 else -distance)
                 
-            # Z movement
+                self._logger.info("Sending Y jog command: %s", distance if y_val < 0 else -distance)
+                self._printer.commands("G91")  # Set to relative positioning
+                self._printer.commands("G0 Y{} F3000".format(distance if y_val < 0 else -distance))  # Y is inverted
+                self._printer.commands("G90")  # Return to absolute positioning
+                    
+            # Z movement (triggers)
             z_val = float(data.get("z", 0))
             if abs(z_val) > 0.1:
-                distance = min(abs(z_val) * 10, 10)
+                distance = min(abs(z_val) * (self.z_scale_factor / 100), 5)  # Z moves should be smaller
                 distance = round(distance, 1)
-                self._printer.jog({"z": distance if z_val > 0 else -distance})
-                self._logger.debug("Z movement: %s", distance if z_val > 0 else -distance)
                 
-            # Extruder movement
+                self._logger.info("Sending Z jog command: %s", distance if z_val > 0 else -distance)
+                self._printer.commands("G91")  # Set to relative positioning
+                self._printer.commands("G0 Z{} F600".format(distance if z_val > 0 else -distance))  # Z should move slowly
+                self._printer.commands("G90")  # Return to absolute positioning
+                    
+            # Extruder movement (left joystick X)
             e_val = float(data.get("e", 0))
             if abs(e_val) > 0.1:
-                distance = min(abs(e_val) * 5, 5)
+                distance = min(abs(e_val) * (self.e_scale_factor / 100), 3)  # Extrusion should be limited
                 distance = round(distance, 1)
-                self._printer.extrude(distance if e_val > 0 else -distance)
-                self._logger.debug("Extruder movement: %s", distance if e_val > 0 else -distance)
                 
-            # Handle buttons if present in data
+                self._logger.info("Sending extruder command: %s", distance if e_val > 0 else -distance)
+                self._printer.commands("G91")  # Set to relative positioning
+                if e_val > 0:
+                    self._printer.commands("G1 E{} F300".format(distance))  # Extrude slowly
+                else:
+                    self._printer.commands("G1 E-{} F1200".format(distance))  # Retract faster
+                self._printer.commands("G90")  # Return to absolute positioning
+                    
+            # Handle buttons
             buttons = data.get("buttons", {})
             for btn_idx, pressed in buttons.items():
                 if pressed:
-                    self._logger.debug("Button pressed: %s", btn_idx)
                     self.handle_button_press(int(btn_idx))
-                    
+                        
         except Exception as e:
             self._logger.error("Error processing controller values: %s", str(e))
 
@@ -228,29 +265,38 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
                         left_trigger = (joystick.get_button(6) * 1.0) if joystick.get_numbuttons() > 6 else 0
                         right_trigger = (joystick.get_button(7) * 1.0) if joystick.get_numbuttons() > 7 else 0
                     
+                    # Apply threshold to avoid noise/drift
+                    right_x = right_x if abs(right_x) > 0.05 else 0
+                    right_y = right_y if abs(right_y) > 0.05 else 0
+                    left_x = left_x if abs(left_x) > 0.05 else 0
+                    z_value = (right_trigger - left_trigger)
+                    z_value = z_value if abs(z_value) > 0.05 else 0
+                    
                     # Daten für die UI
                     controller_data = {
                         "type": "controller_values",
                         "x": right_x,
                         "y": right_y,
-                        "z": right_trigger - left_trigger,  # Kombinierte Z-Bewegung
+                        "z": z_value,
                         "e": left_x  # Extruder-Bewegung
                     }
                     
-                    # Immer Daten senden, unabhängig vom Testmodus
-                    self._plugin_manager.send_plugin_message(self._identifier, controller_data)
+                    # Always send values for the UI, regardless of test mode
+                    if abs(right_x) > 0.05 or abs(right_y) > 0.05 or abs(z_value) > 0.05 or abs(left_x) > 0.05:
+                        self._plugin_manager.send_plugin_message(self._identifier, controller_data)
+                        self._logger.debug("Sending controller values to UI: %s", controller_data)
                     
-                    # Nur im Nicht-Testmodus Bewegungsbefehle ausführen
+                    # Process values for printer movement only if not in test mode
                     if not self.test_mode:
-                        # Movement processing moved to _process_controller_values
-                        self._process_controller_values({
-                            "x": right_x,
-                            "y": right_y,
-                            "z": right_trigger - left_trigger,
-                            "e": left_x
-                        })
+                        if abs(right_x) > 0.05 or abs(right_y) > 0.05 or abs(z_value) > 0.05 or abs(left_x) > 0.05:
+                            self._process_controller_values({
+                                "x": right_x,
+                                "y": right_y,
+                                "z": z_value,
+                                "e": left_x
+                            })
                         
-                        # Buttons weiterhin direkt verarbeiten
+                        # Process buttons
                         for i in range(joystick.get_numbuttons()):
                             if joystick.get_button(i):
                                 self.handle_button_press(i)
@@ -285,16 +331,21 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         self._printer.jog({axis: distance})
     
     def handle_button_press(self, button_index):
-        """Verarbeitet Tastendrücke des Controllers"""
-        # Reduzierte Implementierung für Tasten
-        if button_index == 0:  # A-Taste
-            self._printer.home(['x', 'y'])
-        elif button_index == 1:  # B-Taste
-            # Vollständiger Autohome für alle Achsen
-            self._printer.home(['x', 'y', 'z'])
-            self._logger.info("Autohome-Befehl gesendet")
-        # X- und Y-Tasten haben keine Funktion mehr
-    
+        """Processes controller button presses"""
+        if self.test_mode:
+            self._logger.debug("Test mode active, not processing button %s", button_index)
+            return
+            
+        try:
+            if button_index == 0:  # A-Taste
+                self._logger.info("Sending Home X/Y command")
+                self._printer.commands("G28 X Y")
+            elif button_index == 1:  # B-Taste
+                self._logger.info("Sending Home All command")
+                self._printer.commands("G28")
+        except Exception as e:
+            self._logger.error("Error handling button press: %s", str(e))
+
     # API-Endpunkte
     def get_api_commands(self):
         return dict(
