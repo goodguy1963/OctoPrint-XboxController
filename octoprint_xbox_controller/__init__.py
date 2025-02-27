@@ -6,16 +6,32 @@ import logging
 import sys
 import subprocess
 import glob
+import re  # Added for regex pattern matching
+import select  # Add missing select module for evdev
 
 import octoprint.plugin
 import flask
-import pygame
 
+# Import pygame conditionally to handle potential import issues
+try:
+    import pygame
+    PYGAME_AVAILABLE = True
+except ImportError:
+    PYGAME_AVAILABLE = False
+    
 try:
     import evdev
     EVDEV_AVAILABLE = True
 except ImportError:
     EVDEV_AVAILABLE = False
+
+# Try to import additional USB utilities
+try:
+    import usb.core
+    import usb.util
+    USB_UTILS_AVAILABLE = True
+except ImportError:
+    USB_UTILS_AVAILABLE = False
 
 ################################################################
 # Haupt-Plugin Klasse
@@ -40,6 +56,13 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         self.use_evdev = False  # Will be set based on availability and settings
         self.controller_type = "unknown"  # Will store the detected controller type
         self.evdev_device = None  # Will store the evdev device if applicable
+        self.detection_method = "auto"  # Can be "auto", "pygame", "evdev", "xboxdrv"
+        self.reconnect_timer = None
+        self.last_reconnect_attempt = 0
+        # Add controller state variables for evdev
+        self.evdev_axes = {}  # Store axis values
+        self.evdev_buttons = {}  # Store button states
+        self.last_send_time = 0  # Rate limit value sending
 
     def get_template_configs(self):
         return [
@@ -61,7 +84,9 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
             e_scale_factor=150,
             max_z=100,
             use_evdev=EVDEV_AVAILABLE,  # Default to evdev if available
-            usb_detection_method="auto"  # Can be "auto", "pygame", "evdev", "xboxdrv"
+            usb_detection_method="auto",  # Can be "auto", "pygame", "evdev", "xboxdrv"
+            debug_logging=False,  # Added debug logging option
+            auto_reconnect=True   # Added auto reconnect option
         )
 
     def get_api_commands(self):
@@ -241,72 +266,218 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         self._logger.info("Asset-Configs: %s", self.get_assets())
         
         # Log pygame version and platform information for debugging
-        self._logger.info("Pygame Version: %s", pygame.version.ver)
+        if PYGAME_AVAILABLE:
+            self._logger.info("Pygame Version: %s", pygame.version.ver)
+        else:
+            self._logger.warning("Pygame not available - controller detection may be limited")
+            
         self._logger.info("Platform: %s", sys.platform)
         
         # Log USB detection capabilities
         self._logger.info("EVDEV available: %s", EVDEV_AVAILABLE)
+        self._logger.info("USB Utils available: %s", USB_UTILS_AVAILABLE)
         
         # Check for connected USB devices that might be controllers
         self._logger.info("Checking USB devices...")
-        try:
-            if sys.platform.startswith('linux'):
-                # List USB devices on Linux
-                lsusb_output = subprocess.check_output(['lsusb']).decode('utf-8')
-                self._logger.info("USB Devices:\n%s", lsusb_output)
-                
-                # Look for common Xbox controller IDs
-                xbox_patterns = ['Microsoft.*Xbox', '045e:']  # Common Microsoft/Xbox USB IDs
-                for line in lsusb_output.splitlines():
-                    for pattern in xbox_patterns:
-                        if pattern.lower() in line.lower():
-                            self._logger.info("Potential Xbox controller detected: %s", line)
-            else:
-                self._logger.info("USB device listing not implemented for this platform")
-        except Exception as e:
-            self._logger.error("Error checking USB devices: %s", str(e))
+        self._check_usb_devices()
         
         # Load settings
         self.xy_scale_factor = self._settings.get_int(["xy_scale_factor"], 150)
         self.z_scale_factor = self._settings.get_int(["z_scale_factor"], 150)
         self.e_scale_factor = self._settings.get_int(["e_scale_factor"], 150)
         self.use_evdev = self._settings.get_boolean(["use_evdev"], EVDEV_AVAILABLE)
+        self.detection_method = self._settings.get(["usb_detection_method"], "auto")
         
-        # Check permissions for device access
-        self._check_device_permissions()
+        # More aggressive permission fixes
+        self._check_and_fix_permissions()
         
         # Start controller detection
         self.start_controller_thread()
+        
+        # Schedule periodic reconnection attempts
+        if self._settings.get_boolean(["auto_reconnect"], True):
+            self._schedule_reconnect()
 
-    def _check_device_permissions(self):
-        """Check if the user has proper permissions to access input devices"""
+    def _check_usb_devices(self):
+        """Check for USB devices that might be controllers"""
         try:
+            # Common Xbox controller vendor IDs
+            XBOX_VENDOR_IDS = ['045e', '044f', '046d', '0738', '1532', '0e6f', '24c6']
+            
             if sys.platform.startswith('linux'):
-                # Check if user is in the 'input' group (common requirement for device access)
+                # List USB devices on Linux
+                try:
+                    lsusb_output = subprocess.check_output(['lsusb']).decode('utf-8')
+                    self._logger.info("USB Devices:\n%s", lsusb_output)
+                    
+                    # Look for common Xbox controller IDs
+                    xbox_patterns = ['Microsoft.*Xbox', 'Xbox.*Controller'] + XBOX_VENDOR_IDS
+                    for line in lsusb_output.splitlines():
+                        for pattern in xbox_patterns:
+                            if re.search(pattern, line, re.IGNORECASE):
+                                self._logger.info("⭐ Potential Xbox controller detected: %s", line)
+                                # Extract VID:PID and try to match to a known controller
+                                match = re.search(r'ID\s+([0-9a-fA-F]+):([0-9a-fA-F]+)', line)
+                                if match:
+                                    vid, pid = match.groups()
+                                    self._logger.info("Controller VID:PID = %s:%s", vid, pid)
+                except Exception as e:
+                    self._logger.warning("Error running lsusb: %s", str(e))
+                
+                # Check /dev/input devices
+                try:
+                    input_devices = glob.glob('/dev/input/js*') + glob.glob('/dev/input/event*')
+                    self._logger.info("Input devices: %s", input_devices)
+                except Exception as e:
+                    self._logger.warning("Error checking input devices: %s", str(e))
+            
+            # If pyusb is available, try to directly scan USB devices
+            if USB_UTILS_AVAILABLE:
+                try:
+                    self._logger.info("Scanning USB devices with pyusb...")
+                    for vid in [int(x, 16) for x in XBOX_VENDOR_IDS]:
+                        devices = list(usb.core.find(find_all=True, idVendor=vid))
+                        for device in devices:
+                            self._logger.info("Found USB device: vendor=%04x product=%04x manufacturer=%s",
+                                        device.idVendor, device.idProduct, 
+                                        usb.util.get_string(device, device.iManufacturer) if device.iManufacturer else 'Unknown')
+                except Exception as e:
+                    self._logger.warning("Error scanning USB devices with pyusb: %s", str(e))
+                    
+        except Exception as e:
+            self._logger.error("Error checking USB devices: %s", str(e))
+
+    def _check_and_fix_permissions(self):
+        """More aggressively check and fix permissions for USB and input devices"""
+        if not sys.platform.startswith('linux'):
+            return
+            
+        try:
+            self._logger.info("Checking and fixing device permissions...")
+            
+            # Check user groups
+            try:
                 user = subprocess.check_output(['whoami']).decode('utf-8').strip()
                 groups = subprocess.check_output(['groups', user]).decode('utf-8')
                 
-                if 'input' not in groups and 'root' not in groups:
-                    self._logger.warning("User is not in the 'input' group, may not have permission to access controllers")
-                    self._logger.warning("Consider running: sudo usermod -a -G input %s", user)
-                    self.update_status("Warning: Limited USB device access rights")
+                self._logger.info("User %s is in groups: %s", user, groups)
                 
-                # Check if /dev/input is readable
-                input_devices = glob.glob('/dev/input/js*') + glob.glob('/dev/input/event*')
-                if not input_devices:
-                    self._logger.warning("No input devices found in /dev/input")
-                else:
-                    self._logger.info("Found input devices: %s", input_devices)
+                if 'input' not in groups and 'root' not in groups and 'dialout' not in groups:
+                    self._logger.warning("User is not in required groups, attempting to fix...")
+                    try:
+                        # Try to add user to input and dialout groups
+                        subprocess.call(["sudo", "usermod", "-a", "-G", "input", user], 
+                                        stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                        subprocess.call(["sudo", "usermod", "-a", "-G", "dialout", user], 
+                                        stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                        self._logger.info("Added user to input and dialout groups (requires restart)")
+                    except:
+                        self._logger.warning("Could not add user to groups - insufficient permissions")
+            except Exception as e:
+                self._logger.error("Error checking user groups: %s", str(e))
+                
+            # Fix permissions on all input devices
+            try:
+                # Try using chmod directly
+                for dev_path in ['/dev/input', '/dev/bus/usb']:
+                    if os.path.exists(dev_path):
+                        subprocess.call(["sudo", "chmod", "-R", "a+rw", dev_path], 
+                                      stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                        
+                # Individual device files
+                for device in glob.glob('/dev/input/js*') + glob.glob('/dev/input/event*'):
+                    subprocess.call(["sudo", "chmod", "a+rw", device], 
+                                  stderr=subprocess.PIPE, stdout=subprocess.PIPE)
                     
-                    for device in input_devices:
-                        if os.path.exists(device) and not os.access(device, os.R_OK):
-                            self._logger.warning("No read permission for %s", device)
+                    # Also try changing group
+                    subprocess.call(["sudo", "chgrp", "input", device], 
+                                  stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                    
+                self._logger.info("Applied permissions to input devices")
+                
+                # Create udev rule if it doesn't exist
+                rule_path = "/etc/udev/rules.d/99-xbox-controller.rules"
+                
+                if not os.path.exists(rule_path):
+                    rule_content = """# Xbox controller permissions
+SUBSYSTEM=="input", GROUP="input", MODE="0666"
+KERNEL=="js*", GROUP="input", MODE="0666"
+KERNEL=="event*", GROUP="input", MODE="0666"
+# Xbox controller specific rules
+SUBSYSTEM=="usb", ATTRS{idVendor}=="045e", MODE="0666", GROUP="input"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="054c", MODE="0666", GROUP="input"
+# Additional common controller vendors
+SUBSYSTEM=="usb", ATTRS{idVendor}=="046d", MODE="0666", GROUP="input" # Logitech
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0738", MODE="0666", GROUP="input" # Mad Catz
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1532", MODE="0666", GROUP="input" # Razer
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0e6f", MODE="0666", GROUP="input" # PDP
+SUBSYSTEM=="usb", ATTRS{idVendor}=="24c6", MODE="0666", GROUP="input" # PowerA
+"""
+                    try:
+                        with open("/tmp/99-xbox-controller.rules", "w") as f:
+                            f.write(rule_content)
+                            
+                        # Copy to system directory with sudo
+                        subprocess.call(["sudo", "cp", "/tmp/99-xbox-controller.rules", rule_path], 
+                                      stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                        subprocess.call(["sudo", "udevadm", "control", "--reload-rules"], 
+                                      stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                        subprocess.call(["sudo", "udevadm", "trigger"], 
+                                      stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                        
+                        self._logger.info("Created udev rule for controllers")
+                    except Exception as e:
+                        self._logger.error("Error creating udev rule: %s", str(e))
+                
+            except Exception as e:
+                self._logger.error("Error fixing permissions: %s", str(e))
+            
+            # Try to list USB devices to verify we can see them
+            try:
+                usb_devices = subprocess.check_output(["lsusb"]).decode("utf-8")
+                self._logger.info("USB devices after permission fix:\n%s", usb_devices)
+                
+                # Look for Xbox controllers specifically
+                xbox_pattern = r'(Xbox|Microsoft.*Controller|045e)'
+                if re.search(xbox_pattern, usb_devices, re.IGNORECASE):
+                    self._logger.info("Xbox controller device found in USB list!")
+            except Exception as e:
+                self._logger.error("Error listing USB devices: %s", str(e))
+                
         except Exception as e:
-            self._logger.warning("Error checking device permissions: %s", str(e))
+            self._logger.error("Error in permission check and fix: %s", str(e))
+
+    def _schedule_reconnect(self):
+        """Schedule a reconnection attempt if needed"""
+        if self.reconnect_timer:
+            return
+            
+        def attempt_reconnect():
+            current_time = time.time()
+            # Only try to reconnect every 60 seconds
+            if current_time - self.last_reconnect_attempt > 60:
+                self.last_reconnect_attempt = current_time
+                self._logger.info("Scheduled reconnection attempt...")
+                if not self.controller_initialized:
+                    self.restart_controller_thread()
+            
+            # Reschedule the timer
+            self.reconnect_timer = threading.Timer(60, attempt_reconnect)
+            self.reconnect_timer.daemon = True
+            self.reconnect_timer.start()
+            
+        # Start the timer
+        self.reconnect_timer = threading.Timer(60, attempt_reconnect)
+        self.reconnect_timer.daemon = True
+        self.reconnect_timer.start()
 
     ## ShutdownPlugin: Wird beim Herunterfahren von OctoPrint aufgerufen
     def on_shutdown(self):
         self.controller_running = False
+        if self.reconnect_timer:
+            self.reconnect_timer.cancel()
+            self.reconnect_timer = None
+            
         if self.controller_thread is not None:
             self.controller_thread.join(timeout=1.0)
 
@@ -336,290 +507,323 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
     
     def controller_worker(self):
         try:
-            # First try using evdev if available and enabled
-            if self.use_evdev and EVDEV_AVAILABLE and sys.platform.startswith('linux'):
-                self._logger.info("Using evdev for controller detection")
+            # Dynamic method selection based on settings and availability
+            detection_method = self._settings.get(["usb_detection_method"], "auto")
+            self._logger.info("Using controller detection method: %s", detection_method)
+            
+            # Always try to fix permissions first on startup
+            if sys.platform.startswith('linux'):
+                self._check_and_fix_permissions()
+            
+            if detection_method == "auto":
+                # Try multiple methods in order of preference
+                if sys.platform.startswith('linux'):
+                    # On Linux, try evdev first if available, then pygame
+                    if EVDEV_AVAILABLE:
+                        self._logger.info("Trying evdev detection first...")
+                        if not self._evdev_controller_loop(try_only=False):  # Changed to False to commit to evdev
+                            self._logger.info("Evdev detection failed, falling back to pygame...")
+                            if PYGAME_AVAILABLE:
+                                self._pygame_controller_loop()
+                            else:
+                                self._logger.error("No controller detection methods available!")
+                    elif PYGAME_AVAILABLE:
+                        self._logger.info("Evdev not available, using pygame...")
+                        self._pygame_controller_loop()
+                    else:
+                        self._logger.error("No controller detection methods available!")
+                else:
+                    # On other platforms, pygame is the only option
+                    if PYGAME_AVAILABLE:
+                        self._logger.info("Using pygame for controller detection...")
+                        self._pygame_controller_loop()
+                    else:
+                        self._logger.error("No controller detection methods available!")
+            elif detection_method == "evdev" and EVDEV_AVAILABLE:
+                self._logger.info("Using evdev for controller detection (explicit)")
                 self._evdev_controller_loop()
-            else:
-                # Fall back to pygame
-                self._logger.info("Using pygame for controller detection")
+            elif detection_method == "pygame" and PYGAME_AVAILABLE:
+                self._logger.info("Using pygame for controller detection (explicit)")
                 self._pygame_controller_loop()
-                
+            elif detection_method == "xboxdrv":
+                self._logger.info("Using xboxdrv for controller detection (experimental)")
+                self._xboxdrv_controller_loop()
+            else:
+                self._logger.error("Selected controller detection method %s not available!", detection_method)
+                # Fall back to any available method
+                if PYGAME_AVAILABLE:
+                    self._logger.info("Falling back to pygame...")
+                    self._pygame_controller_loop()
+                elif EVDEV_AVAILABLE:
+                    self._logger.info("Falling back to evdev...")
+                    self._evdev_controller_loop()
         finally:
             self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Nicht verbunden"})
 
-    def _evdev_controller_loop(self):
+    def _evdev_controller_loop(self, try_only=False):
         """Controller worker using evdev (Linux only)"""
+        if not EVDEV_AVAILABLE:
+            self._logger.warning("Evdev not available, cannot use this detection method")
+            return False
+            
         try:
             self._logger.info("Starting evdev controller detection loop")
+            device_found = False
+            reconnect_count = 0
+            
+            # Initial device scan
+            devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
+            if not devices:
+                self._logger.warning("No input devices found with evdev")
+                if try_only:
+                    return False
+                    
+            # Log all found devices
+            for device in devices:
+                self._logger.info("Input device: %s at %s", device.name, device.path)
+                # Check if it's a game controller or joystick
+                if any(keyword in device.name.lower() for keyword in ['xbox', 'controller', 'gamepad', 'joystick', 'joypad']):
+                    self._logger.info("⭐ Potential controller device: %s", device.name)
+                    self.evdev_device = device
+                    controller_device = device
+                    self.controller_initialized = True
+                    device_found = True
+                    self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Verbunden"})
+                    break
+            
+            last_scan_time = 0
+            
+            # Reset controller state
+            self.evdev_axes = {}
+            self.evdev_buttons = {}
+            
+            # Define axis and button mappings (common for Xbox controllers)
+            # These can vary between controller models - this is a common mapping
+            AXIS_MAPPING = {
+                0: 'left_x',    # Left stick X
+                1: 'left_y',    # Left stick Y (inverted)
+                2: 'right_x',   # Right stick X
+                3: 'right_y',   # Right stick Y (inverted)
+                4: 'lt',        # Left trigger (on some controllers)
+                5: 'rt'         # Right trigger (on some controllers)
+            }
+            
+            BUTTON_MAPPING = {
+                0: 'a',         # A button
+                1: 'b',         # B button
+                2: 'x',         # X button
+                3: 'y',         # Y button
+                4: 'lb',        # Left bumper
+                5: 'rb',        # Right bumper
+                6: 'back',      # Back/View button
+                7: 'start',     # Start/Menu button
+                8: 'home',      # Xbox button/Home
+                9: 'l_thumb',   # Left stick press
+                10: 'r_thumb'   # Right stick press
+            }
             
             while self.controller_running:
-                try:
-                    # Look for Xbox controllers
-                    if not self.controller_initialized:
+                current_time = time.time()
+                
+                # Periodically rescan for devices
+                if current_time - last_scan_time > 5:  # Every 5 seconds
+                    last_scan_time = current_time
+                    try:
+                        # Fresh scan for input devices
                         devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
-                        for device in devices:
-                            self._logger.debug("Found input device: %s", device.name)
-                            # Check if it's likely an Xbox controller
-                            name_lower = device.name.lower()
-                            if 'xbox' in name_lower or 'microsoft' in name_lower or 'gamepad' in name_lower:
-                                self._logger.info("Found potential Xbox controller: %s at %s", device.name, device.path)
-                                self.evdev_device = device
-                                self.controller_type = "xbox-evdev"
-                                self.controller_initialized = True
-                                self._plugin_manager.send_plugin_message(self._identifier, 
-                                                                    {"type": "status", "status": "Verbunden: " + device.name})
-                                break
-                    
-                    # If we have an initialized controller, read events
-                    if self.controller_initialized and self.evdev_device:
-                        # Non-blocking event reading
-                        events = self.evdev_device.read()
                         
-                        # Process events and convert to controller values
-                        if events:
-                            # Simplified handling - in a real implementation,
-                            # you would track state of all axes and buttons
-                            self._logger.debug("Received %d events from controller", len(events))
-                            
-                            # Example processing of events to controller values
-                            # This would need to be adapted to your specific controller
-                            controller_data = self._process_evdev_events(events)
-                            
-                            # Send values to UI for display
-                            self._plugin_manager.send_plugin_message(self._identifier, {
-                                "type": "controller_values",
-                                "x": controller_data.get('x', 0),
-                                "y": controller_data.get('y', 0),
-                                "z": controller_data.get('z', 0),
-                                "e": controller_data.get('e', 0)
-                            })
-                            
-                            # Process movement if not in test mode
-                            if not self.test_mode:
-                                self._process_controller_values(controller_data)
-                    
-                    # Check if device is still connected
-                    elif self.controller_initialized:
-                        if not os.path.exists(self.evdev_device.path):
-                            self._logger.info("Controller disconnected: %s", self.evdev_device.path)
-                            self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Nicht verbunden"})
-                            self.controller_initialized = False
-                            self.evdev_device = None
-                    
-                    # Short sleep to prevent high CPU usage
-                    time.sleep(0.01)
-                    
-                except Exception as e:
-                    if 'Resource temporarily unavailable' not in str(e):
-                        self._logger.error("Error in evdev controller loop: %s", str(e))
-                    time.sleep(0.5)
-                    
-        except Exception as e:
-            self._logger.error("Error in evdev controller worker: %s", str(e))
-
-    def _process_evdev_events(self, events):
-        """Process evdev events to controller values"""
-        # This is a simplified implementation
-        # You would need to map your specific controller's events to axes
-        result = {'x': 0, 'y': 0, 'z': 0, 'e': 0, 'buttons': {}}
-        
-        # In a real implementation, you would track state of all axes
-        # and update only the ones that changed in this batch of events
-        
-        return result
-
-    def _pygame_controller_loop(self):
-        """Controller worker using pygame"""
-        try:
-            # Initialize pygame
-            self._logger.info("Initializing pygame for controller detection")
-            pygame.init()
-            pygame.joystick.init()
-            
-            # Debug information about pygame
-            self._logger.info("Pygame initialized. Available joysticks: %d", pygame.joystick.get_count())
-            
-            # List all available joysticks
-            for i in range(pygame.joystick.get_count()):
-                try:
-                    joy = pygame.joystick.Joystick(i)
-                    joy.init()
-                    self._logger.info("Found joystick %d: %s with %d axes and %d buttons", 
-                                    i, joy.get_name(), joy.get_numaxes(), joy.get_numbuttons())
-                    joy.quit()  # Release it for now
-                except Exception as e:
-                    self._logger.error("Error inspecting joystick %d: %s", i, str(e))
-            
-            # Set up controller detection loop
-            self.controller_initialized = False
-            reconnect_attempts = 0
-            joystick = None
-            
-            # Warte auf Controller-Verbindung
-            while self.controller_running:
-                try:
-                    # Re-initialize pygame joystick subsystem periodically to refresh the list
-                    if reconnect_attempts % 5 == 0:
-                        self._logger.info("Refreshing joystick detection")
-                        try:
-                            pygame.joystick.quit()
-                            pygame.joystick.init()
-                        except Exception as e:
-                            self._logger.error("Error refreshing joystick subsystem: %s", str(e))
-                
-                    joystick_count = pygame.joystick.get_count()
-                    current_time = time.time()
-                    
-                    # Check if it's time to re-check for controllers (every 2 seconds)
-                    if current_time - self.last_controller_check >= 2:
-                        self.last_controller_check = current_time
-                        
-                        if joystick_count > 0 and not self.controller_initialized:
-                            # Controller found - try each connected joystick
-                            for i in range(joystick_count):
-                                try:
-                                    tmp_joystick = pygame.joystick.Joystick(i)
-                                    tmp_joystick.init()
-                                    controller_name = tmp_joystick.get_name()
+                        # Only log if we haven't found a controller yet or every 60 seconds
+                        if not self.controller_initialized or reconnect_count % 12 == 0:
+                            self._logger.info("Rescanning for input devices, found %d devices", len(devices))
+                            for device in devices:
+                                caps = device.capabilities(verbose=True)
+                                is_joystick = evdev.ecodes.EV_ABS in caps and len(caps.get(evdev.ecodes.EV_ABS, [])) >= 2
+                                
+                                # Check if it's likely a controller
+                                if is_joystick or any(keyword in device.name.lower() for keyword in ['xbox', 'controller', 'gamepad', 'joystick']):
+                                    self._logger.info("⭐ Found controller device: %s at %s", device.name, device.path)
+                                    self._logger.info("Controller capabilities: %s", caps)
+                                    controller_device = device
+                                    self.evdev_device = device
+                                    self.controller_type = "controller-evdev"
+                                    self.controller_initialized = True
+                                    device_found = True
                                     
-                                    # Check if this is likely an Xbox controller
-                                    if "xbox" in controller_name.lower() or "x-box" in controller_name.lower() or \
-                                       "microsoft" in controller_name.lower():
-                                        self._logger.info("Xbox controller detected! %s", controller_name)
-                                        joystick = tmp_joystick
-                                        break
-                                    else:
-                                        # Not an Xbox controller but we'll use it if nothing else
-                                        if not joystick:
-                                            self._logger.info("Non-Xbox controller found: %s - will use if no Xbox controller is found", 
-                                                           controller_name)
-                                            joystick = tmp_joystick
-                                        else:
-                                            tmp_joystick.quit()
-                                except Exception as e:
-                                    self._logger.error("Error initializing joystick %d: %s", i, str(e))
-                            
-                            # If we found and initialized a controller
-                            if joystick:
-                                controller_name = joystick.get_name()
-                                self._logger.info("Controller connected: %s with %d axes and %d buttons", 
-                                                controller_name, joystick.get_numaxes(), joystick.get_numbuttons())
-                                
-                                # Send success message to frontend
-                                self._plugin_manager.send_plugin_message(self._identifier, 
-                                                                     {"type": "status", "status": "Verbunden: " + controller_name})
-                                
-                                # Also send connection info message
-                                self._plugin_manager.send_plugin_message(self._identifier, {
-                                    "type": "connection_info",
-                                    "source": "backend",
-                                    "connected": True,
-                                    "id": controller_name
-                                })
-                                
-                                self.controller_initialized = True
-                                reconnect_attempts = 0
+                                    # Send success message to frontend
+                                    self._plugin_manager.send_plugin_message(self._identifier, 
+                                                                        {"type": "status", "status": "Verbunden: " + device.name})
+                                    
+                                    # Also send connection info message
+                                    self._plugin_manager.send_plugin_message(self._identifier, {
+                                        "type": "connection_info",
+                                        "source": "backend",
+                                        "connected": True,
+                                        "id": device.name
+                                    })
+                                    
+                                    # Initialize axis states
+                                    for code, name in AXIS_MAPPING.items():
+                                        self.evdev_axes[name] = 0.0
+                                    
+                                    # Initialize button states
+                                    for code, name in BUTTON_MAPPING.items():
+                                        self.evdev_buttons[name] = False
+                                        
+                                    break
+                    except Exception as e:
+                        self._logger.error("Error scanning input devices: %s", str(e))
+                
+                # If we have an initialized controller, read events
+                if self.controller_initialized and controller_device:
+                    try:
+                        # Try to read events with a timeout
+                        r, w, x = select.select([controller_device.fd], [], [], 0.1)
                         
-                        elif joystick_count == 0 and self.controller_initialized:
-                            # Controller was disconnected
-                            self._logger.info("Controller disconnected")
+                        if r:
+                            for event in controller_device.read():
+                                # Process the event and update controller state
+                                self._process_evdev_event(event, AXIS_MAPPING, BUTTON_MAPPING)
+                            
+                            # Send controller values periodically
+                            if current_time - self.last_send_time > 0.05:  # 50ms rate limit
+                                self.last_send_time = current_time
+                                self._send_evdev_controller_values()
+                                
+                        # Periodically check that device is still available
+                        if current_time - last_scan_time > 2:  # Every 2 seconds
+                            if not os.path.exists(controller_device.path):
+                                self._logger.warning("Controller disconnected: %s", controller_device.path)
+                                self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Nicht verbunden"})
+                                self.controller_initialized = False
+                                controller_device = None
+                                self.evdev_device = None
+                                break
+                                
+                    except (OSError, IOError) as e:
+                        if e.errno == 19:  # "No such device" error
+                            self._logger.warning("Device %s no longer available", controller_device.path)
                             self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Nicht verbunden"})
                             self.controller_initialized = False
-                            if joystick:
-                                try:
-                                    joystick.quit()
-                                except:
-                                    pass
-                            joystick = None
+                            controller_device = None
+                            self.evdev_device = None
+                        elif e.errno != 11:  # Ignore "resource temporarily unavailable" (expected with non-blocking)
+                            self._logger.error("Error reading from device: %s", str(e))
+                    except Exception as e:
+                        self._logger.error("Unexpected error with evdev: %s", str(e))
+                
+                time.sleep(0.01)
+                reconnect_count += 1
+                
+            return device_found
+                
+        except Exception as e:
+            self._logger.error("Fatal error in evdev controller worker: %s", str(e))
+            if try_only:
+                return False
+            return False
+
+    def _process_evdev_event(self, event, axis_mapping, button_mapping):
+        """Process a single evdev event and update controller state"""
+        try:
+            if event.type == evdev.ecodes.EV_KEY:  # Button event
+                # Get button code and pressed state
+                button_code = event.code
+                pressed = event.value == 1
+                
+                # Find the button name if it's in our mapping
+                for code, name in button_mapping.items():
+                    if button_code == code or button_code == getattr(evdev.ecodes, f'BTN_{name.upper()}', -1):
+                        self.evdev_buttons[name] = pressed
+                        self._logger.debug("Button %s (code %s) %s", 
+                                       name, button_code, "pressed" if pressed else "released")
                         
-                        elif joystick_count == 0 and not self.controller_initialized:
-                            # No controller connected yet, log periodically
-                            reconnect_attempts += 1
-                            if reconnect_attempts % 15 == 0:  # Log every 30 seconds to avoid spam
-                                self._logger.info("Waiting for controller... (attempt %d)", reconnect_attempts)
-                                self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Warte auf Controller..."})
+                        # Handle button press if needed
+                        if pressed:
+                            if name == 'a':  # A button
+                                self.handle_button_press(0)
+                            elif name == 'b':  # B button
+                                self.handle_button_press(1)
                 
-                    # If controller is active, read inputs
-                    if self.controller_initialized and joystick:
-                        try:
-                            pygame.event.pump()
-                            
-                            # Joystick-Werte auslesen
-                            left_x = joystick.get_axis(0)  # Linker Joystick X-Achse für Extruder
-                            left_y = -joystick.get_axis(1)  # Y-Achse invertieren
-                            right_x = joystick.get_axis(2)  # Rechter Joystick X-Achse
-                            right_y = -joystick.get_axis(3)  # Y-Achse invertieren
-                            
-                            # Trigger-Werte auslesen (können je nach Controller unterschiedlich sein)
-                            try:
-                                left_trigger = joystick.get_axis(4) if joystick.get_numaxes() > 4 else 0
-                                right_trigger = joystick.get_axis(5) if joystick.get_numaxes() > 5 else 0
-                            except:
-                                # Fallback für andere Controller-Layouts
-                                left_trigger = (joystick.get_button(6) * 1.0) if joystick.get_numbuttons() > 6 else 0
-                                right_trigger = (joystick.get_button(7) * 1.0) if joystick.get_numbuttons() > 7 else 0
-                            
-                            # Apply threshold to avoid noise/drift
-                            right_x = right_x if abs(right_x) > 0.05 else 0
-                            right_y = right_y if abs(right_y) > 0.05 else 0
-                            left_x = left_x if abs(left_x) > 0.05 else 0
-                            z_value = (right_trigger - left_trigger)
-                            z_value = z_value if abs(z_value) > 0.05 else 0
-                            
-                            # Daten für die UI
-                            controller_data = {
-                                "type": "controller_values",
-                                "x": right_x,
-                                "y": right_y,
-                                "z": z_value,
-                                "e": left_x  # Extruder-Bewegung
-                            }
-                            
-                            # Always send values for the UI, regardless of test mode
-                            if abs(right_x) > 0.05 or abs(right_y) > 0.05 or abs(z_value) > 0.05 or abs(left_x) > 0.05:
-                                self._plugin_manager.send_plugin_message(self._identifier, controller_data)
-                                self._logger.debug("Sending controller values to UI: %s", controller_data)
-                            
-                            # Process values for printer movement only if not in test mode
-                            if not self.test_mode:
-                                if abs(right_x) > 0.05 or abs(right_y) > 0.05 or abs(z_value) > 0.05 or abs(left_x) > 0.05:
-                                    self._process_controller_values({
-                                        "x": right_x,
-                                        "y": right_y,
-                                        "z": z_value,
-                                        "e": left_x
-                                    })
+            elif event.type == evdev.ecodes.EV_ABS:  # Axis event
+                # Get axis code and value
+                axis_code = event.code
+                value = event.value
+                
+                # Find the axis name if it's in our mapping
+                for code, name in axis_mapping.items():
+                    if axis_code == code or axis_code == getattr(evdev.ecodes, f'ABS_{name.upper()}', -1):
+                        # Normalize value to -1.0 to 1.0 range
+                        abs_info = self.evdev_device.absinfo(axis_code)
+                        if abs_info:
+                            min_val, max_val = abs_info.min, abs_info.max
+                            range_val = max_val - min_val
+                            if range_val > 0:
+                                normalized = 2.0 * (value - min_val) / range_val - 1.0
                                 
-                                # Process buttons
-                                for i in range(joystick.get_numbuttons()):
-                                    if joystick.get_button(i):
-                                        self.handle_button_press(i)
-                                        
-                        except Exception as e:
-                            self._logger.error("Error reading controller: %s", str(e))
-                            # If we hit an error reading the controller, try to recover
-                            if "Invalid joystick device number" in str(e):
-                                self.controller_initialized = False
-                                self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Fehler: Controller nicht erreichbar"})
-                    
-                    time.sleep(0.1)  # Kurze Pause, um CPU-Last zu reduzieren
+                                # Invert Y axes (they're typically opposite from the expected direction)
+                                if name.endswith('_y'):
+                                    normalized = -normalized
+                                    
+                                self.evdev_axes[name] = normalized
+                                if abs(normalized) > 0.1:  # Only log significant movements
+                                    self._logger.debug("Axis %s (code %s) value: %.2f", 
+                                                   name, axis_code, normalized)
+        except Exception as e:
+            self._logger.error("Error processing evdev event: %s", str(e))
+
+    def _send_evdev_controller_values(self):
+        """Send the current controller state to the UI and printer control"""
+        try:
+            # Skip if no significant input
+            if all(abs(v) < 0.1 for v in self.evdev_axes.values()) and not any(self.evdev_buttons.values()):
+                return
                 
-                except Exception as e:
-                    self._logger.error("Error in controller thread: %s", str(e))
-                    self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Fehler: " + str(e)})
+            # Map axes to our expected control values
+            x_val = self.evdev_axes.get('right_x', 0.0)
+            y_val = self.evdev_axes.get('right_y', 0.0)
+            z_val = 0.0
             
-        finally:
-            try:
-                if joystick:
-                    joystick.quit()
-                pygame.joystick.quit()
-                pygame.quit()
-                self._logger.info("Pygame resources released")
-            except Exception as e:
-                self._logger.error("Error shutting down pygame: %s", str(e))
+            # Map triggers to Z movement
+            # Some controllers use axes for triggers, some use buttons
+            if 'lt' in self.evdev_axes and 'rt' in self.evdev_axes:
+                z_val = self.evdev_axes.get('rt', 0.0) - self.evdev_axes.get('lt', 0.0)
+            else:
+                # Use buttons as fallback
+                rt_pressed = self.evdev_buttons.get('rb', False)
+                lt_pressed = self.evdev_buttons.get('lb', False)
+                z_val = (1.0 if rt_pressed else 0.0) - (1.0 if lt_pressed else 0.0)
             
-            self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Nicht verbunden"})
+            # Map left stick X to extruder control
+            e_val = self.evdev_axes.get('left_x', 0.0)
+            
+            # Construct controller data
+            controller_data = {
+                "type": "controller_values",
+                "x": x_val,
+                "y": y_val,
+                "z": z_val,
+                "e": e_val
+            }
+            
+            # Send to UI
+            self._plugin_manager.send_plugin_message(self._identifier, controller_data)
+            
+            # Process movement if not in test mode
+            if not self.test_mode:
+                self._process_controller_values({
+                    "x": x_val,
+                    "y": y_val,
+                    "z": z_val,
+                    "e": e_val,
+                    "buttons": {
+                        0: self.evdev_buttons.get('a', False),
+                        1: self.evdev_buttons.get('b', False),
+                        # Add more button mappings as needed
+                    }
+                })
+        
+        except Exception as e:
+            self._logger.error("Error sending evdev controller values: %s", str(e))
 
     def restart_controller_thread(self):
         """Restart the controller thread to force reconnection"""

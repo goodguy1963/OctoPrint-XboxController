@@ -26,6 +26,12 @@ KERNEL=="event*", GROUP="input", MODE="0666"
 # Xbox controller specific rules
 SUBSYSTEM=="usb", ATTRS{idVendor}=="045e", MODE="0666", GROUP="input"
 SUBSYSTEM=="usb", ATTRS{idVendor}=="054c", MODE="0666", GROUP="input"
+# Additional common controller vendors
+SUBSYSTEM=="usb", ATTRS{idVendor}=="046d", MODE="0666", GROUP="input" # Logitech
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0738", MODE="0666", GROUP="input" # Mad Catz
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1532", MODE="0666", GROUP="input" # Razer
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0e6f", MODE="0666", GROUP="input" # PDP
+SUBSYSTEM=="usb", ATTRS{idVendor}=="24c6", MODE="0666", GROUP="input" # PowerA
 """
             
             # Check if we have permission to write to the udev rules directory
@@ -47,17 +53,33 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="054c", MODE="0666", GROUP="input"
                 print("sudo udevadm control --reload-rules")
                 print("sudo udevadm trigger")
                 
-            # Try to add current user to input group
+            # Try to add current user to input and dialout groups
             try:
                 user = subprocess.check_output(['whoami']).decode('utf-8').strip()
-                print(f"Adding user {user} to input group...")
+                print(f"Adding user {user} to input and dialout groups...")
                 subprocess.call(["usermod", "-a", "-G", "input", user])
-                print(f"Added {user} to input group. A system reboot is recommended.")
+                subprocess.call(["usermod", "-a", "-G", "dialout", user])
+                print(f"Added {user} to input and dialout groups. A system reboot is recommended.")
             except Exception as e:
-                print(f"Could not add user to input group: {str(e)}")
+                print(f"Could not add user to groups: {str(e)}")
                 print("To manually add your user to the input group, run:")
-                print("sudo usermod -a -G input $USER")
+                print("sudo usermod -a -G input,dialout $USER")
                 print("Then reboot your system")
+                
+            # Fix permissions on existing devices if present
+            try:
+                print("Attempting to fix permissions on existing devices...")
+                for dev_path in ['/dev/input', '/dev/bus/usb']:
+                    if os.path.exists(dev_path):
+                        subprocess.call(["sudo", "chmod", "-R", "a+rw", dev_path])
+                
+                # Individual device files
+                import glob
+                for device in glob.glob('/dev/input/js*') + glob.glob('/dev/input/event*'):
+                    subprocess.call(["sudo", "chmod", "a+rw", device])
+                print("Applied permissions to input devices")
+            except Exception as e:
+                print(f"Error fixing device permissions: {str(e)}")
                 
         except Exception as e:
             print(f"Error setting up permissions: {str(e)}")
