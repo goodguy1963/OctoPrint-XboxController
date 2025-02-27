@@ -193,26 +193,93 @@ $(function() {
             var activeGamepad = null;
             var frameCounter = 0;
             var connectionCheckInterval = null;
+            var detectionAttempts = 0;
             
-            // Prüfe ob ein Gamepad verbunden ist
+            // Force controller detection
+            function forceGamepadDetection() {
+                console.log("Xbox Controller Plugin: Forcing gamepad detection (attempt " + (++detectionAttempts) + ")");
+                
+                // Log all available navigator gamepad methods
+                console.log("Navigator gamepad methods:", {
+                    getGamepads: !!navigator.getGamepads,
+                    webkitGetGamepads: !!navigator.webkitGetGamepads,
+                    mozGetGamepads: !!navigator.mozGetGamepads,
+                    msGetGamepads: !!navigator.msGetGamepads
+                });
+                
+                // Try all possible gamepad APIs
+                var gamepads = [];
+                try {
+                    if (navigator.getGamepads) {
+                        gamepads = navigator.getGamepads();
+                    } else if (navigator.webkitGetGamepads) {
+                        gamepads = navigator.webkitGetGamepads();
+                    } else if (navigator.mozGetGamepads) {
+                        gamepads = navigator.mozGetGamepads();
+                    } else if (navigator.msGetGamepads) {
+                        gamepads = navigator.msGetGamepads();
+                    }
+                } catch (e) {
+                    console.error("Error accessing gamepads:", e);
+                }
+                
+                console.log("Available gamepads:", gamepads ? gamepads.length : 0);
+                
+                // Debug each gamepad found
+                if (gamepads) {
+                    for (var i = 0; i < gamepads.length; i++) {
+                        if (gamepads[i]) {
+                            console.log("Gamepad " + i + ":", {
+                                id: gamepads[i].id,
+                                connected: gamepads[i].connected,
+                                mapping: gamepads[i].mapping,
+                                axesCount: gamepads[i].axes ? gamepads[i].axes.length : 0,
+                                buttonsCount: gamepads[i].buttons ? gamepads[i].buttons.length : 0
+                            });
+                            
+                            // Xbox controllers typically contain "Xbox" in their ID
+                            if (gamepads[i].id.toLowerCase().indexOf("xbox") !== -1) {
+                                console.log("Xbox controller detected!");
+                            }
+                        }
+                    }
+                }
+                
+                return gamepads;
+            }
+            
+            // More aggressive gamepad check
             function checkGamepadConnection() {
-                var gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+                var gamepads = forceGamepadDetection();
                 var connectedGamepad = null;
                 
                 for (var i = 0; i < gamepads.length; i++) {
                     if (gamepads[i] && gamepads[i].connected) {
                         connectedGamepad = gamepads[i];
+                        console.log("Found connected controller:", gamepads[i].id);
                         break;
                     }
                 }
                 
                 // Wenn ein Gamepad verbunden ist oder sich der Status geändert hat
-                if (connectedGamepad && !activeGamepad) {
+                if (connectedGamepad && !self.controllerConnected()) {
                     activeGamepad = connectedGamepad;
                     self.controllerStatus("Verbunden: " + connectedGamepad.id);
                     self.controllerConnected(true);
                     console.log("Xbox Controller Plugin: Gamepad verbunden -", connectedGamepad.id);
                     startGamepadLoop();
+                    
+                    // Send a discovery notification to backend
+                    $.ajax({
+                        url: API_BASEURL + "plugin/xbox_controller",
+                        type: "POST",
+                        dataType: "json",
+                        data: JSON.stringify({
+                            command: "controllerDiscovered",
+                            id: connectedGamepad.id
+                        }),
+                        contentType: "application/json; charset=UTF-8"
+                    });
                     
                     // Log all available controller properties for debugging
                     console.log("Controller details:", {
@@ -225,7 +292,7 @@ $(function() {
                         buttons: connectedGamepad.buttons.length
                     });
                     
-                } else if (!connectedGamepad && activeGamepad) {
+                } else if (!connectedGamepad && self.controllerConnected()) {
                     activeGamepad = null;
                     self.controllerConnected(false);
                     
@@ -240,24 +307,18 @@ $(function() {
                     }
                 }
             }
-            
-            // Set up a more aggressive connection check interval
+
+            // Set up a more aggressive connection check interval with staggered checks
             connectionCheckInterval = setInterval(function() {
                 checkGamepadConnection();
-                
-                // Force browser to update gamepad list
-                if (navigator.getGamepads) {
-                    navigator.getGamepads();
-                }
-                
-                // If both detection methods agree controller is connected, update status
-                if (self.controllerConnected() && self.backendControllerConnected()) {
-                    if (self.controllerStatus() === "Nicht verbunden") {
-                        self.controllerStatus("Verbunden (beide Erkennung)");
-                    }
-                }
             }, 1000);
             
+            // Additional scan every 5 seconds with browser focus
+            setInterval(function() {
+                window.focus();
+                checkGamepadConnection();
+            }, 5000);
+
             // Starte die Gamepad-Überwachungsschleife
             function startGamepadLoop() {
                 if (requestAnimationId) {
@@ -387,11 +448,14 @@ $(function() {
             
             // Event-Listener für Controller-Verbindungen  
             window.addEventListener("gamepadconnected", function(e) {
-                console.log("Xbox Controller Plugin: Gamepad verbunden:", e.gamepad.id);
+                console.log("Xbox Controller Plugin: Gamepad connected event triggered:", e.gamepad.id);
                 self.controllerStatus("Verbunden: " + e.gamepad.id);
                 self.controllerConnected(true);
                 activeGamepad = e.gamepad;
                 startGamepadLoop();
+                
+                // Alert for better visibility in console
+                console.log("%c GAMEPAD CONNECTED: " + e.gamepad.id, "background: green; color: white; padding: 5px;");
             });
             
             window.addEventListener("gamepaddisconnected", function(e) {

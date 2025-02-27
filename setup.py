@@ -13,7 +13,8 @@ setup(
     install_requires=[
         "octoprint>=1.3.0",
         "xbox360controller",
-        "pygame>=2.0.0"  # Ensure newer pygame version
+        "pygame>=2.0.0",  # Ensure newer pygame version
+        "pyusb"  # Additional USB support
     ],
     entry_points={
         "octoprint.plugin": [
