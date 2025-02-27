@@ -55,7 +55,7 @@ This plugin provides intuitive control of your 3D printer using an Xbox controll
 2. Navigate to Settings → Plugin Manager → Get More...
 3. Enter `XboxController` in the search box or paste this URL:
    ```
-   https://github.com/goodguy1963/OctoPrint-XboxController/archive/main.zip
+   https://github.com/goodguy1963/OctoPrint-XboxController/archive/BUGFIX.zip
    ```
 4. Click "Install"
 5. Restart OctoPrint when prompted
