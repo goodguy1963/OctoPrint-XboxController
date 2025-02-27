@@ -30,6 +30,11 @@ $(function() {
         self.xyScaleFactor = ko.observable(150);
         self.zScaleFactor = ko.observable(150);
         self.eScaleFactor = ko.observable(150);
+        
+        // Status tracking for the controller
+        self.controllerConnected = ko.observable(false);
+        self.backendControllerConnected = ko.observable(false);
+        self.messageCount = 0;
 
         // Fügen Sie eine Initialisierungsfunktion hinzu
         self.onBeforeBinding = function() {
@@ -142,15 +147,32 @@ $(function() {
             if (plugin !== "xbox_controller") return;
 
             console.log("Xbox Controller Plugin: Nachricht empfangen:", data);
+            self.messageCount++;
+            
+            // Log message count periodically for debugging
+            if (self.messageCount % 10 === 0) {
+                console.log("Xbox Controller Plugin: Received " + self.messageCount + " messages so far");
+            }
 
             if (data.type === "status") {
                 self.controllerStatus(data.status);
+                
+                // Update backend controller connection status
+                if (data.status.indexOf("Verbunden:") === 0) {
+                    self.backendControllerConnected(true);
+                    console.log("Xbox Controller Plugin: Backend reports controller connected");
+                } else {
+                    self.backendControllerConnected(false);
+                }
             } else if (data.type === "controller_values") {
                 // Immer Werte aktualisieren, aber nur im Testmodus anzeigen
                 self.currentX(data.x.toFixed(2));
                 self.currentY(data.y.toFixed(2));
                 self.currentZ(data.z.toFixed(2));
                 self.currentE(data.e.toFixed(2));
+                
+                // Controller is definitely connected if we're getting values
+                self.backendControllerConnected(true);
                 
                 // Log values to terminal if in test mode
                 if (self.isTestMode()) {
@@ -170,6 +192,7 @@ $(function() {
             var lastAxesValues = {}; // Speichert die letzten Joystick-Werte, um Spam zu vermeiden
             var activeGamepad = null;
             var frameCounter = 0;
+            var connectionCheckInterval = null;
             
             // Prüfe ob ein Gamepad verbunden ist
             function checkGamepadConnection() {
@@ -187,21 +210,53 @@ $(function() {
                 if (connectedGamepad && !activeGamepad) {
                     activeGamepad = connectedGamepad;
                     self.controllerStatus("Verbunden: " + connectedGamepad.id);
+                    self.controllerConnected(true);
                     console.log("Xbox Controller Plugin: Gamepad verbunden -", connectedGamepad.id);
-                    startGamepadLoop(); // Fix: Diese Funktion wurde aufgerufen aber nicht definiert
+                    startGamepadLoop();
+                    
+                    // Log all available controller properties for debugging
+                    console.log("Controller details:", {
+                        id: connectedGamepad.id,
+                        index: connectedGamepad.index,
+                        mapping: connectedGamepad.mapping,
+                        connected: connectedGamepad.connected,
+                        timestamp: connectedGamepad.timestamp,
+                        axes: connectedGamepad.axes.length,
+                        buttons: connectedGamepad.buttons.length
+                    });
+                    
                 } else if (!connectedGamepad && activeGamepad) {
                     activeGamepad = null;
-                    self.controllerStatus("Nicht verbunden");
+                    self.controllerConnected(false);
+                    
+                    // Only update status if backend also reports not connected
+                    if (!self.backendControllerConnected()) {
+                        self.controllerStatus("Nicht verbunden");
+                    }
                     console.log("Xbox Controller Plugin: Gamepad getrennt");
                     if (requestAnimationId) {
                         cancelAnimationFrame(requestAnimationId);
                         requestAnimationId = null;
                     }
                 }
-                
-                // Regelmäßig erneut prüfen
-                setTimeout(checkGamepadConnection, 1000);
             }
+            
+            // Set up a more aggressive connection check interval
+            connectionCheckInterval = setInterval(function() {
+                checkGamepadConnection();
+                
+                // Force browser to update gamepad list
+                if (navigator.getGamepads) {
+                    navigator.getGamepads();
+                }
+                
+                // If both detection methods agree controller is connected, update status
+                if (self.controllerConnected() && self.backendControllerConnected()) {
+                    if (self.controllerStatus() === "Nicht verbunden") {
+                        self.controllerStatus("Verbunden (beide Erkennung)");
+                    }
+                }
+            }, 1000);
             
             // Starte die Gamepad-Überwachungsschleife
             function startGamepadLoop() {
@@ -227,7 +282,7 @@ $(function() {
                 }
                 
                 if (!gamepad) {
-                    self.controllerStatus("Verbindung verloren");
+                    // Don't update status here - let the checkGamepadConnection handle it
                     requestAnimationId = requestAnimationFrame(gamepadLoop);
                     return;
                 }
@@ -334,13 +389,20 @@ $(function() {
             window.addEventListener("gamepadconnected", function(e) {
                 console.log("Xbox Controller Plugin: Gamepad verbunden:", e.gamepad.id);
                 self.controllerStatus("Verbunden: " + e.gamepad.id);
+                self.controllerConnected(true);
                 activeGamepad = e.gamepad;
                 startGamepadLoop();
             });
             
             window.addEventListener("gamepaddisconnected", function(e) {
                 console.log("Xbox Controller Plugin: Gamepad getrennt:", e.gamepad.id);
-                self.controllerStatus("Nicht verbunden");
+                self.controllerConnected(false);
+                
+                // Only update status if backend also reports not connected
+                if (!self.backendControllerConnected()) {
+                    self.controllerStatus("Nicht verbunden");
+                }
+                
                 if (activeGamepad && activeGamepad.index === e.gamepad.index) {
                     activeGamepad = null;
                 }
@@ -354,6 +416,11 @@ $(function() {
                 if (requestAnimationId) {
                     cancelAnimationFrame(requestAnimationId);
                     requestAnimationId = null;
+                }
+                
+                if (connectionCheckInterval) {
+                    clearInterval(connectionCheckInterval);
+                    connectionCheckInterval = null;
                 }
             };
         };

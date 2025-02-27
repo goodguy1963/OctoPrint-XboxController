@@ -3,6 +3,7 @@ import time
 import threading
 import os
 import logging
+import sys
 
 import octoprint.plugin
 import flask
@@ -26,6 +27,8 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         self.xy_scale_factor = 150
         self.z_scale_factor = 150
         self.e_scale_factor = 150
+        self.controller_initialized = False
+        self.last_controller_check = 0
 
     def get_template_configs(self):
         return [
@@ -195,6 +198,10 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         self._logger.info("Template-Configs: %s", self.get_template_configs())
         self._logger.info("Asset-Configs: %s", self.get_assets())
         
+        # Log pygame version and platform information for debugging
+        self._logger.info("Pygame Version: %s", pygame.version.ver)
+        self._logger.info("Platform: %s", sys.platform)
+        
         self.xy_scale_factor = self._settings.get_int(["xy_scale_factor"], 150)
         self.z_scale_factor = self._settings.get_int(["z_scale_factor"], 150)
         self.e_scale_factor = self._settings.get_int(["e_scale_factor"], 150)
@@ -220,89 +227,142 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         self.controller_thread = threading.Thread(target=self.controller_worker)
         self.controller_thread.daemon = True
         self.controller_thread.start()
+        self._logger.info("Controller thread started")
     
     def controller_worker(self):
         try:
+            # Initialize pygame
+            self._logger.info("Initializing pygame for controller detection")
             pygame.init()
             pygame.joystick.init()
+            
+            # Debug information about pygame
+            self._logger.info("Pygame initialized. Available joysticks: %d", pygame.joystick.get_count())
+            
+            # Set up controller detection loop
+            self.controller_initialized = False
+            reconnect_attempts = 0
+            joystick = None
             
             # Warte auf Controller-Verbindung
             while self.controller_running:
                 joystick_count = pygame.joystick.get_count()
-                if joystick_count > 0:
-                    break
-                self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Warte auf Controller..."})
-                time.sleep(1)
-            
-            if not self.controller_running:
-                return
-            
-            # Controller initialisieren
-            joystick = pygame.joystick.Joystick(0)
-            joystick.init()
-            controller_name = joystick.get_name()
-            self._logger.info("Controller connected: %s with %d axes and %d buttons", 
-                             controller_name, joystick.get_numaxes(), joystick.get_numbuttons())
-            self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Verbunden: " + controller_name})
-            
-            # Hauptschleife
-            while self.controller_running:
-                pygame.event.pump()
+                current_time = time.time()
                 
-                # Joystick-Werte auslesen
-                try:
-                    left_x = joystick.get_axis(0)  # Linker Joystick X-Achse für Extruder
-                    left_y = -joystick.get_axis(1)  # Y-Achse invertieren
-                    right_x = joystick.get_axis(2)  # Rechter Joystick X-Achse
-                    right_y = -joystick.get_axis(3)  # Y-Achse invertieren
+                # Check if it's time to re-check for controllers (every 2 seconds)
+                if current_time - self.last_controller_check >= 2:
+                    self.last_controller_check = current_time
                     
-                    # Trigger-Werte auslesen (können je nach Controller unterschiedlich sein)
+                    if joystick_count > 0 and not self.controller_initialized:
+                        # Controller found
+                        try:
+                            # Re-initialize pygame joystick subsystem to refresh the list
+                            pygame.joystick.quit()
+                            pygame.joystick.init()
+                            joystick_count = pygame.joystick.get_count()
+                            
+                            if joystick_count > 0:
+                                self._logger.info("Controller found! Initializing...")
+                                joystick = pygame.joystick.Joystick(0)
+                                joystick.init()
+                                controller_name = joystick.get_name()
+                                self._logger.info("Controller connected: %s with %d axes and %d buttons", 
+                                                controller_name, joystick.get_numaxes(), joystick.get_numbuttons())
+                                
+                                # Send success message to frontend
+                                self._plugin_manager.send_plugin_message(self._identifier, 
+                                                                     {"type": "status", "status": "Verbunden: " + controller_name})
+                                self.controller_initialized = True
+                                reconnect_attempts = 0
+                        except Exception as e:
+                            self._logger.error("Error initializing controller: %s", str(e))
+                            reconnect_attempts += 1
+                            if reconnect_attempts % 5 == 0:  # Every 5 attempts (10 seconds)
+                                self._logger.info("Still trying to initialize controller... (attempt %d)", reconnect_attempts)
+                                # Try re-initializing pygame entirely
+                                try:
+                                    pygame.quit()
+                                    pygame.init()
+                                    pygame.joystick.init()
+                                except Exception as pg_err:
+                                    self._logger.error("Error re-initializing pygame: %s", str(pg_err))
+                    
+                    elif joystick_count == 0 and self.controller_initialized:
+                        # Controller was disconnected
+                        self._logger.info("Controller disconnected")
+                        self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Nicht verbunden"})
+                        self.controller_initialized = False
+                        joystick = None
+                    
+                    elif joystick_count == 0 and not self.controller_initialized:
+                        # No controller connected yet, log periodically
+                        reconnect_attempts += 1
+                        if reconnect_attempts % 15 == 0:  # Log every 30 seconds to avoid spam
+                            self._logger.info("Waiting for controller... (attempt %d)", reconnect_attempts)
+                            self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Warte auf Controller..."})
+                
+                # If controller is active, read inputs
+                if self.controller_initialized and joystick:
                     try:
-                        left_trigger = joystick.get_axis(4) if joystick.get_numaxes() > 4 else 0
-                        right_trigger = joystick.get_axis(5) if joystick.get_numaxes() > 5 else 0
-                    except:
-                        # Fallback für andere Controller-Layouts
-                        left_trigger = (joystick.get_button(6) * 1.0) if joystick.get_numbuttons() > 6 else 0
-                        right_trigger = (joystick.get_button(7) * 1.0) if joystick.get_numbuttons() > 7 else 0
-                    
-                    # Apply threshold to avoid noise/drift
-                    right_x = right_x if abs(right_x) > 0.05 else 0
-                    right_y = right_y if abs(right_y) > 0.05 else 0
-                    left_x = left_x if abs(left_x) > 0.05 else 0
-                    z_value = (right_trigger - left_trigger)
-                    z_value = z_value if abs(z_value) > 0.05 else 0
-                    
-                    # Daten für die UI
-                    controller_data = {
-                        "type": "controller_values",
-                        "x": right_x,
-                        "y": right_y,
-                        "z": z_value,
-                        "e": left_x  # Extruder-Bewegung
-                    }
-                    
-                    # Always send values for the UI, regardless of test mode
-                    if abs(right_x) > 0.05 or abs(right_y) > 0.05 or abs(z_value) > 0.05 or abs(left_x) > 0.05:
-                        self._plugin_manager.send_plugin_message(self._identifier, controller_data)
-                        self._logger.debug("Sending controller values to UI: %s", controller_data)
-                    
-                    # Process values for printer movement only if not in test mode
-                    if not self.test_mode:
-                        if abs(right_x) > 0.05 or abs(right_y) > 0.05 or abs(z_value) > 0.05 or abs(left_x) > 0.05:
-                            self._process_controller_values({
-                                "x": right_x,
-                                "y": right_y,
-                                "z": z_value,
-                                "e": left_x
-                            })
+                        pygame.event.pump()
                         
-                        # Process buttons
-                        for i in range(joystick.get_numbuttons()):
-                            if joystick.get_button(i):
-                                self.handle_button_press(i)
-                    
-                except Exception as e:
-                    self._logger.error("Error reading controller: %s", str(e))
+                        # Joystick-Werte auslesen
+                        left_x = joystick.get_axis(0)  # Linker Joystick X-Achse für Extruder
+                        left_y = -joystick.get_axis(1)  # Y-Achse invertieren
+                        right_x = joystick.get_axis(2)  # Rechter Joystick X-Achse
+                        right_y = -joystick.get_axis(3)  # Y-Achse invertieren
+                        
+                        # Trigger-Werte auslesen (können je nach Controller unterschiedlich sein)
+                        try:
+                            left_trigger = joystick.get_axis(4) if joystick.get_numaxes() > 4 else 0
+                            right_trigger = joystick.get_axis(5) if joystick.get_numaxes() > 5 else 0
+                        except:
+                            # Fallback für andere Controller-Layouts
+                            left_trigger = (joystick.get_button(6) * 1.0) if joystick.get_numbuttons() > 6 else 0
+                            right_trigger = (joystick.get_button(7) * 1.0) if joystick.get_numbuttons() > 7 else 0
+                        
+                        # Apply threshold to avoid noise/drift
+                        right_x = right_x if abs(right_x) > 0.05 else 0
+                        right_y = right_y if abs(right_y) > 0.05 else 0
+                        left_x = left_x if abs(left_x) > 0.05 else 0
+                        z_value = (right_trigger - left_trigger)
+                        z_value = z_value if abs(z_value) > 0.05 else 0
+                        
+                        # Daten für die UI
+                        controller_data = {
+                            "type": "controller_values",
+                            "x": right_x,
+                            "y": right_y,
+                            "z": z_value,
+                            "e": left_x  # Extruder-Bewegung
+                        }
+                        
+                        # Always send values for the UI, regardless of test mode
+                        if abs(right_x) > 0.05 or abs(right_y) > 0.05 or abs(z_value) > 0.05 or abs(left_x) > 0.05:
+                            self._plugin_manager.send_plugin_message(self._identifier, controller_data)
+                            self._logger.debug("Sending controller values to UI: %s", controller_data)
+                        
+                        # Process values for printer movement only if not in test mode
+                        if not self.test_mode:
+                            if abs(right_x) > 0.05 or abs(right_y) > 0.05 or abs(z_value) > 0.05 or abs(left_x) > 0.05:
+                                self._process_controller_values({
+                                    "x": right_x,
+                                    "y": right_y,
+                                    "z": z_value,
+                                    "e": left_x
+                                })
+                            
+                            # Process buttons
+                            for i in range(joystick.get_numbuttons()):
+                                if joystick.get_button(i):
+                                    self.handle_button_press(i)
+                                    
+                    except Exception as e:
+                        self._logger.error("Error reading controller: %s", str(e))
+                        # If we hit an error reading the controller, try to recover
+                        if "Invalid joystick device number" in str(e):
+                            self.controller_initialized = False
+                            self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Fehler: Controller nicht erreichbar"})
                 
                 time.sleep(0.1)  # Kurze Pause, um CPU-Last zu reduzieren
         
@@ -312,10 +372,13 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         
         finally:
             try:
+                if joystick:
+                    joystick.quit()
                 pygame.joystick.quit()
                 pygame.quit()
-            except:
-                pass
+                self._logger.info("Pygame resources released")
+            except Exception as e:
+                self._logger.error("Error shutting down pygame: %s", str(e))
             
             self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Nicht verbunden"})
     
