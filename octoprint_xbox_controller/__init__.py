@@ -45,7 +45,7 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         return [
             dict(type="tab", template="xbox_controller_tab.jinja2", name="Xbox Controller", custom_bindings=True),
             dict(type="settings", template="xbox_controller_settings.jinja2", name="Xbox Controller", custom_bindings=True),
-            dict(type="navbar", template="xbox_controller_navbar.jinja2", custom_bindings=False)  # Einfaches Template ohne Bindung
+            dict(type="navbar", template="xbox_controller_navbar.jinja2", custom_bindings=False, replaces=False)  # Updated navbar config
         ]
 
     def get_assets(self):
@@ -69,7 +69,7 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
             toggleTestMode=["enabled"],
             updateScaleFactor=["axis", "value"],
             controllerValues=["x", "y", "z", "e"],
-            controllerDiscovered=["id"]  # New command to handle controller discovery from JS
+            controllerDiscovered=["id", "source"]  # Updated to accept source parameter
         )
 
     def on_api_command(self, command, data):
@@ -132,11 +132,23 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         
         elif command == "controllerDiscovered":
             controller_id = data.get("id", "Unknown")
-            self._logger.info("Controller discovered by frontend: %s", controller_id)
-            # Try to reinitialize controller thread
-            if not self.controller_initialized:
+            source = data.get("source", "unknown")
+            self._logger.info("Controller discovered by %s: %s", source, controller_id)
+            
+            # If this is a browser controller, update the status differently
+            if source == "browser":
+                self._plugin_manager.send_plugin_message(self._identifier, {
+                    "type": "connection_info",
+                    "source": "browser",
+                    "connected": True,
+                    "id": controller_id
+                })
+            
+            # Try to reinitialize controller thread if needed
+            if not self.controller_initialized and source != "browser":
                 self._logger.info("Attempting to connect to controller %s from backend", controller_id)
                 self.restart_controller_thread()
+                
             return flask.jsonify(success=True)
             
         return flask.jsonify(error="Unknown command")
@@ -497,6 +509,15 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
                                 # Send success message to frontend
                                 self._plugin_manager.send_plugin_message(self._identifier, 
                                                                      {"type": "status", "status": "Verbunden: " + controller_name})
+                                
+                                # Also send connection info message
+                                self._plugin_manager.send_plugin_message(self._identifier, {
+                                    "type": "connection_info",
+                                    "source": "backend",
+                                    "connected": True,
+                                    "id": controller_name
+                                })
+                                
                                 self.controller_initialized = True
                                 reconnect_attempts = 0
                         

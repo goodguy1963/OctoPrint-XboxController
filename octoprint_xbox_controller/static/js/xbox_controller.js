@@ -21,6 +21,11 @@ $(function() {
         self.controllerStatus = ko.observable("Nicht verbunden");
         self.isTestMode = ko.observable(false);
         
+        // New observables for connection type tracking
+        self.connectionType = ko.observable("None");
+        self.connectionTypeVisible = ko.observable(false);
+        self.browserControllerConnected = ko.observable(false);
+        
         self.currentX = ko.observable("0.00");
         self.currentY = ko.observable("0.00");
         self.currentZ = ko.observable("0.00");
@@ -209,6 +214,11 @@ $(function() {
                 if (self.isTestMode()) {
                     console.log("Controller Values:", data);
                 }
+            } else if (data.type === "connection_info") {
+                // Handle specific connection info messages
+                if (data.source === "backend") {
+                    self.backendControllerConnected(data.connected);
+                }
             }
         };
 
@@ -293,10 +303,11 @@ $(function() {
                 }
                 
                 // Wenn ein Gamepad verbunden ist oder sich der Status geändert hat
-                if (connectedGamepad && !self.controllerConnected()) {
+                if (connectedGamepad && !self.browserControllerConnected()) {
                     activeGamepad = connectedGamepad;
                     self.controllerStatus("Verbunden: " + connectedGamepad.id);
                     self.controllerConnected(true);
+                    self.browserControllerConnected(true); // Update browser connection state
                     console.log("Xbox Controller Plugin: Gamepad verbunden -", connectedGamepad.id);
                     startGamepadLoop();
                     
@@ -307,7 +318,8 @@ $(function() {
                         dataType: "json",
                         data: JSON.stringify({
                             command: "controllerDiscovered",
-                            id: connectedGamepad.id
+                            id: connectedGamepad.id,
+                            source: "browser" // Indicate this is a browser-connected controller
                         }),
                         contentType: "application/json; charset=UTF-8"
                     });
@@ -323,15 +335,18 @@ $(function() {
                         buttons: connectedGamepad.buttons.length
                     });
                     
-                } else if (!connectedGamepad && self.controllerConnected()) {
+                } else if (!connectedGamepad && self.browserControllerConnected()) {
                     activeGamepad = null;
+                    self.browserControllerConnected(false);
                     self.controllerConnected(false);
                     
                     // Only update status if backend also reports not connected
                     if (!self.backendControllerConnected()) {
                         self.controllerStatus("Nicht verbunden");
+                    } else {
+                        self.controllerStatus("Verbunden über USB am Pi");
                     }
-                    console.log("Xbox Controller Plugin: Gamepad getrennt");
+                    console.log("Xbox Controller Plugin: Browser gamepad getrennt");
                     if (requestAnimationId) {
                         cancelAnimationFrame(requestAnimationId);
                         requestAnimationId = null;
@@ -480,22 +495,26 @@ $(function() {
             // Event-Listener für Controller-Verbindungen  
             window.addEventListener("gamepadconnected", function(e) {
                 console.log("Xbox Controller Plugin: Gamepad connected event triggered:", e.gamepad.id);
-                self.controllerStatus("Verbunden: " + e.gamepad.id);
+                self.controllerStatus("Browser: Verbunden: " + e.gamepad.id);
                 self.controllerConnected(true);
+                self.browserControllerConnected(true);
                 activeGamepad = e.gamepad;
                 startGamepadLoop();
                 
                 // Alert for better visibility in console
-                console.log("%c GAMEPAD CONNECTED: " + e.gamepad.id, "background: green; color: white; padding: 5px;");
+                console.log("%c BROWSER GAMEPAD CONNECTED: " + e.gamepad.id, "background: green; color: white; padding: 5px;");
             });
             
             window.addEventListener("gamepaddisconnected", function(e) {
                 console.log("Xbox Controller Plugin: Gamepad getrennt:", e.gamepad.id);
+                self.browserControllerConnected(false);
                 self.controllerConnected(false);
                 
                 // Only update status if backend also reports not connected
                 if (!self.backendControllerConnected()) {
                     self.controllerStatus("Nicht verbunden");
+                } else {
+                    self.controllerStatus("Verbunden über USB am Pi");
                 }
                 
                 if (activeGamepad && activeGamepad.index === e.gamepad.index) {

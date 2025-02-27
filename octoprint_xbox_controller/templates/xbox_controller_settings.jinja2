@@ -1,5 +1,15 @@
 <form class="form-horizontal" id="settings_plugin_xbox_controller" style="border: 3px solid blue; padding: 10px;">
-    <h3 style="color: blue;">Xbox Controller Einstellungen - DEBUG MODE</h3>
+    <h3 style="color: blue;">Xbox Controller Einstellungen</h3>
+    
+    <div class="alert alert-success">
+        <h4>Controller Connection Methods</h4>
+        <p>This plugin supports two ways to connect your Xbox controller:</p>
+        <ol>
+            <li><strong>Direct USB Connection:</strong> Connect your controller directly to the Raspberry Pi/OctoPrint server</li>
+            <li><strong>Browser Connection:</strong> Connect your controller to the device running your browser</li>
+        </ol>
+        <p>Both methods work simultaneously and will be automatically detected.</p>
+    </div>
     
     <div class="control-group">
         <label class="control-label">XY-Skalierungsfaktor:</label>
@@ -21,6 +31,8 @@
             <input type="number" class="input-mini" data-bind="value: eScaleFactor" min="1" max="500">
         </div>
     </div>
+    
+    <h4>Advanced USB Controller Detection Settings</h4>
     
     <div class="control-group">
         <label class="control-label">USB-Erkennung Methode:</label>

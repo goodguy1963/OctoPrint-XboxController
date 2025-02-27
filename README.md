@@ -14,6 +14,7 @@ Control your 3D printer directly with an Xbox controller through OctoPrint!
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Connection Methods](#connection-methods)
 - [Platform Compatibility](#platform-compatibility)
 - [Controller Mapping](#controller-mapping)
 - [Configuration](#configuration)
@@ -37,7 +38,7 @@ This plugin provides intuitive control of your 3D printer using an Xbox controll
 - **Test Mode**: Verify controller inputs without sending commands to the printer
 - **Customizable Sensitivity**: Adjust response curves for different control styles
 - **Multi-Platform Support**: Works on Linux (Raspberry Pi) and Windows systems
-- **Dual Detection Methods**: Controller can be detected via browser or directly on the OctoPrint server
+- **Flexible Connection Options**: Use controller connected to your Pi OR through the browser
 
 ## 🔧 Requirements
 
@@ -55,7 +56,7 @@ This plugin provides intuitive control of your 3D printer using an Xbox controll
 2. Navigate to Settings → Plugin Manager → Get More...
 3. Enter `XboxController` in the search box or paste this URL:
    ```
-   https://github.com/goodguy1963/OctoPrint-XboxController/archive/BUGFIX.zip
+   https://github.com/goodguy1963/OctoPrint-XboxController/archive/main.zip
    ```
 4. Click "Install"
 5. Restart OctoPrint when prompted
@@ -75,18 +76,60 @@ This plugin provides intuitive control of your 3D printer using an Xbox controll
    ```
 6. Restart OctoPrint
 
+## 🎮 Connection Methods
+
+This plugin is designed with flexibility in mind, providing two ways to use your Xbox controller with OctoPrint:
+
+### 1. Direct Connection to Raspberry Pi/OctoPrint Server (Recommended)
+
+![Direct Connection](https://raw.githubusercontent.com/goodguy1963/OctoPrint-XboxController/main/assets/direct_connection.png)
+
+- **Setup**: Simply plug your Xbox controller directly into a USB port on your Raspberry Pi or OctoPrint server
+- **Advantages**:
+  - ✅ Works even when the browser is closed
+  - ✅ Lower latency for responsive control
+  - ✅ Works with any device accessing OctoPrint (phone, tablet, desktop)
+  - ✅ No browser compatibility concerns
+  - ✅ No need for the controller to be connected to your browsing device
+- **USB Permissions**: Automatically set up during installation on Linux systems
+- **Best For**: Permanent 3D printer setups where the Pi is easily accessible
+
+### 2. Connection through Browser
+
+![Browser Connection](https://raw.githubusercontent.com/goodguy1963/OctoPrint-XboxController/main/assets/browser_connection.png)
+
+- **Setup**: Connect the Xbox controller to the device that's running your browser
+- **How it Works**: Controller inputs are captured by the browser and sent to OctoPrint
+- **Advantages**:
+  - ✅ No need to physically access the Raspberry Pi/server
+  - ✅ Useful for remote operation scenarios
+  - ✅ Great when your OctoPrint server isn't easily accessible
+  - ✅ Works well for Windows OctoPrint installations
+- **Requirements**: Browser with Gamepad API support (Chrome, Firefox, Edge recommended)
+- **Best For**: Remote printing management or when physical access to the server is limited
+
+### Using Both Methods Simultaneously
+
+The plugin will automatically detect controllers connected via either method, allowing for great flexibility:
+
+- Use a controller plugged into the Pi for local control
+- Connect another controller to your laptop for remote adjustments
+- The plugin will clearly show which connection method is active
+- Seamlessly switch between connection methods as needed
+
 ## 🖥️ Platform Compatibility
 
 ### Raspberry Pi / Linux
 - Best experience with controllers physically connected to the Raspberry Pi
-- Requires proper user permissions (see Troubleshooting section)
+- USB permissions are automatically configured during installation
 - Supports both evdev and pygame detection methods
 - Controllers can be detected even if not connected to the browsing device
 
 ### Windows
-- Supports controllers connected to the OctoPrint server
-- Browser-based detection as fallback
+- Supports controllers connected directly to the Windows OctoPrint server
+- Browser-based detection provides a reliable fallback option
 - Best performance with Xbox branded controllers
+- Works with both USB and wireless Xbox controllers
 
 ## 🎮 Controller Mapping
 
@@ -125,24 +168,30 @@ The test mode can be activated via the "Xbox Controller" tab. In this mode:
 
 ## 🛠️ Troubleshooting
 
-### Controller Not Detected
+### Direct USB Connection Issues
 
 #### On Raspberry Pi / Linux:
-1. Check user permissions:
+1. Verify the controller is properly connected:
    ```bash
-   # Add your user to the input group
+   # List USB devices
+   lsusb
+   ```
+
+2. Check user permissions (should be set automatically during installation):
+   ```bash
+   # Add your user to the input group if needed
    sudo usermod -a -G input $USER
    # Log out and log back in for changes to take effect
    ```
 
-2. Verify device access:
+3. Verify device access:
    ```bash
    # List input devices
    ls -l /dev/input/js*
    ls -l /dev/input/event*
    ```
 
-3. Test controller detection:
+4. Test controller detection directly:
    ```bash
    # For evdev
    python3 -c "import evdev; print(evdev.list_devices())"
@@ -155,6 +204,15 @@ The test mode can be activated via the "Xbox Controller" tab. In this mode:
 2. Ensure controller is recognized by Windows before using with OctoPrint
 3. Try a different USB port
 4. Update controller drivers
+
+### Browser Connection Issues
+1. Verify the controller works in other browser applications
+2. Try the controller connection test at https://gamepad-tester.com/
+3. Ensure you're using a compatible browser (Chrome, Firefox, Edge recommended)
+4. Check browser console (F12) for any JavaScript errors related to gamepad
+5. Try restarting your browser or using a private/incognito window
+6. Allow browser permissions if prompted
+7. On Windows, make sure Xbox accessories app isn't interfering
 
 ### UI Elements Not Displaying
 1. Clear browser cache and reload the page
@@ -176,12 +234,15 @@ The test mode can be activated via the "Xbox Controller" tab. In this mode:
 
 - **Browser Compatibility**: Some browsers may have issues with the Gamepad API. Chrome and Firefox are recommended.
 - **Controller Reconnection**: Occasionally, a manual restart of OctoPrint may be required after reconnecting a controller.
-- **Multiple Controllers**: The plugin currently works best with a single controller connected.
+- **Multiple Controllers**: The plugin currently works best with a single controller connected per connection method.
 - **Wireless Controllers**: Some wireless controllers may have connection issues or increased latency.
 - **UI Element Display**: In some cases, UI elements may not display correctly. Clear your browser cache or try a different browser.
 - **Settings Loading**: If settings fail to load, try restarting OctoPrint or reinstalling the plugin.
 
 ## ❓ FAQ
+
+**Q: Can I use the controller both directly connected to the Pi and through my browser?**  
+A: Yes! The plugin will detect both connection methods and show you which one is active.
 
 **Q: Can I use a PlayStation/Generic controller instead of Xbox?**  
 A: Yes, most controllers that work with your operating system should work, though button mapping may differ.
@@ -193,7 +254,10 @@ A: Yes, this is the primary development platform and works best on Raspberry Pi.
 A: The plugin has safety features that prevent movement commands during active printing.
 
 **Q: Will the controller work if connected to my PC instead of the Raspberry Pi?**  
-A: Yes, through browser detection, but for best results connect directly to the OctoPrint server.
+A: Yes, through browser detection. The plugin will automatically use your PC-connected controller to control the printer.
+
+**Q: Do I need to set up USB permissions manually?**  
+A: No, the plugin attempts to set up required permissions during installation. Only if that fails would manual setup be needed.
 
 ## 🤝 Contributing
 
