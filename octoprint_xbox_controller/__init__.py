@@ -411,23 +411,23 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
                                 self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Fehler: Controller nicht erreichbar"})
                     
                     time.sleep(0.1)  # Kurze Pause, um CPU-Last zu reduzieren
-            
-            except Exception as e:
-                self._logger.error("Error in controller thread: %s", str(e))
-                self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Fehler: " + str(e)})
-            
-            finally:
-                try:
-                    if joystick:
-                        joystick.quit()
-                    pygame.joystick.quit()
-                    pygame.quit()
-                    self._logger.info("Pygame resources released")
-                except Exception as e:
-                    self._logger.error("Error shutting down pygame: %s", str(e))
                 
-                self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Nicht verbunden"})
-    
+                except Exception as e:
+                    self._logger.error("Error in controller thread: %s", str(e))
+                    self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Fehler: " + str(e)})
+            
+        finally:
+            try:
+                if joystick:
+                    joystick.quit()
+                pygame.joystick.quit()
+                pygame.quit()
+                self._logger.info("Pygame resources released")
+            except Exception as e:
+                self._logger.error("Error shutting down pygame: %s", str(e))
+            
+            self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Nicht verbunden"})
+
     def restart_controller_thread(self):
         """Restart the controller thread to force reconnection"""
         self._logger.info("Restarting controller thread")
