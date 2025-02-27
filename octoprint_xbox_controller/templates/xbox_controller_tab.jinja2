@@ -12,7 +12,7 @@
     <div class="row-fluid">
         <div class="span6">
             <div class="control-group">
-                <label class="control-label">Testmodus:</label>
+                <label class="control-label">Testmodus: <span id="test_mode_indicator" data-bind="text: isTestMode() ? 'Aktiv' : 'Inaktiv', style: { color: isTestMode() ? 'green' : 'red' }"></span></label>
                 <div class="controls">
                     <button class="btn" data-bind="click: toggleTestMode, css: {'btn-primary': isTestMode()}">
                         <span data-bind="text: isTestMode() ? 'Testmodus deaktivieren' : 'Testmodus aktivieren'"></span>
@@ -20,7 +20,7 @@
                 </div>
             </div>
             
-            <div data-bind="visible: isTestMode()">
+            <div data-bind="visible: isTestMode()" style="border: 1px dashed #ccc; padding: 10px; margin-top: 10px;">
                 <h4>Controller-Werte (nur im Testmodus):</h4>
                 <table class="table table-bordered table-striped">
                     <thead>
@@ -48,6 +48,9 @@
                         </tr>
                     </tbody>
                 </table>
+                <div class="alert alert-warning">
+                    <strong>Hinweis:</strong> Im Testmodus werden keine Befehle an den Drucker gesendet!
+                </div>
             </div>
         </div>
         
@@ -60,6 +63,15 @@
                 <li><strong>A-Taste:</strong> Home X/Y</li>
                 <li><strong>B-Taste:</strong> Home X/Y/Z</li>
             </ul>
+            
+            <div class="alert alert-info">
+                <strong>Tipp:</strong> Falls keine Eingaben erkannt werden, versuchen Sie:
+                <ol>
+                    <li>Den Controller neu anzuschließen</li>
+                    <li>Die Seite neu zu laden</li>
+                    <li>Einen anderen Browser zu verwenden</li>
+                </ol>
+            </div>
         </div>
     </div>
 </div>

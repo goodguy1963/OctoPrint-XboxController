@@ -1,82 +1,119 @@
-# OctoPrint Xbox Controller Plugin
+# 🎮 OctoPrint Xbox Controller Plugin
 
-Dieses Plugin ermöglicht die Steuerung eines 3D-Druckers mit einem Xbox-Controller über OctoPrint.
+![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Python](https://img.shields.io/badge/python-3.x-green)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-## Installation
+Control your 3D printer directly with an Xbox controller through OctoPrint!
 
-1. Installieren Sie das Plugin über den OctoPrint Plugin Manager:
-   - Gehen Sie zu Einstellungen > Plugin Manager > Weitere Plugins durchsuchen
-   - Fügen Sie diese URL ein: `https://github.com/goodguy1963/OctoPrint-XboxController/archive/BUGFIX.zip`
-   - Klicken Sie auf "Installieren"
+![Xbox Controller Plugin](https://raw.githubusercontent.com/goodguy1963/OctoPrint-XboxController/main/assets/controller_banner.png)
 
-2. Alternativ können Sie das Plugin auch direkt über den Plugin Manager installieren, wenn es im offiziellen Repository verfügbar ist.
+## 📋 Table of Contents
 
-3. Starten Sie OctoPrint neu
+- [Overview](#overview)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Controller Mapping](#controller-mapping)
+- [Configuration](#configuration)
+- [Test Mode](#test-mode)
+- [Troubleshooting](#troubleshooting)
+- [Known Issues](#known-issues)
+- [Contributing](#contributing)
+- [License](#license)
 
-4. Schließen Sie einen Xbox-Controller an Ihren Raspberry Pi / Computer an
+## 📌 Overview
 
-## Funktionen
+This plugin provides intuitive control of your 3D printer using an Xbox controller connected to your OctoPrint server. Enjoy precise movements, variable speed control, and customizable settings for a seamless printing experience.
 
-- Steuerung der Druckerbewegungen (X, Y, Z) mit dem Xbox-Controller
-- Steuerung des Extruders mit dem linken Joystick
-- Variable Bewegungsgeschwindigkeit basierend auf der Joystick-Position (max. 10mm)
-- Einfache Konfiguration über die OctoPrint-Oberfläche
-- Testmodus zur Überprüfung der Controller-Eingaben
+## ✨ Features
 
-## Voraussetzungen
+- **Intuitive Movement Control**: Control X, Y, Z axes with joysticks and triggers
+- **Extruder Control**: Manage filament extrusion with the left joystick
+- **Variable Speed**: Movement speed adjusts based on joystick position (up to 10mm)
+- **One-Touch Homing**: Quick homing functions with dedicated buttons
+- **Test Mode**: Verify controller inputs without sending commands to the printer
+- **Customizable Sensitivity**: Adjust response curves for different control styles
 
-- OctoPrint 1.3.0 oder höher
-- Python 3
-- Pygame-Bibliothek (wird automatisch installiert)
+## 🔧 Requirements
 
-## Controller-Belegung
+- OctoPrint 1.3.0 or newer
+- Python 3.x
+- Xbox controller or compatible gamepad
+- Pygame library (automatically installed with the plugin)
 
-### Bewegungssteuerung
-- **Rechter Joystick**: X/Y-Achsen-Bewegung
-  - Links/Rechts: X-Achse
-  - Vor/Zurück: Y-Achse
-- **Trigger-Tasten**: Z-Achsen-Bewegung
-  - Rechter Trigger (RT): Z-Achse nach oben
-  - Linker Trigger (LT): Z-Achse nach unten
-- **Linker Joystick**: Extruder-Steuerung
-  - Links/Rechts: Filament zurückziehen/extrudieren
+## 📥 Installation
 
-### Tasten
-- **A-Taste**: Home X/Y-Achsen
-- **B-Taste**: Vollständiger Autohome (X, Y, Z)
+### Method 1: OctoPrint Plugin Manager
 
-## Konfiguration
+1. Open OctoPrint in your browser
+2. Navigate to Settings → Plugin Manager → Get More...
+3. Enter `XboxController` in the search box or paste this URL:
+   ```
+   https://github.com/goodguy1963/OctoPrint-XboxController/archive/BUGFIX.zip
+   ```
+4. Click "Install"
+5. Restart OctoPrint when prompted
 
-Im Einstellungsbereich des Plugins können Sie folgende Parameter anpassen:
+### Method 2: Manual Installation
 
-- XY-Skalierungsfaktor: Beeinflusst die Empfindlichkeit der X/Y-Bewegung
-- Z-Skalierungsfaktor: Beeinflusst die Empfindlichkeit der Z-Bewegung
-- E-Skalierungsfaktor: Beeinflusst die Empfindlichkeit der Extruder-Bewegung
+1. Download the plugin from the GitHub repository
+2. Extract the downloaded ZIP file
+3. Copy the extracted folder to the OctoPrint plugins directory
+4. Restart OctoPrint
 
-## Testmodus
+## 🎮 Controller Mapping
 
-Der Testmodus kann über den Tab "Xbox Controller" aktiviert werden. In diesem Modus werden die Controller-Eingaben angezeigt, ohne dass tatsächliche Bewegungsbefehle an den Drucker gesendet werden.
+### Movement Control
+- **Right Joystick**: X/Y-axis movement
+  - Left/Right: X-axis
+  - Forward/Backward: Y-axis
+- **Trigger Buttons**: Z-axis movement
+  - Right Trigger (RT): Z-axis up
+  - Left Trigger (LT): Z-axis down
+- **Left Joystick**: Extruder control
+  - Left/Right: Retract/extrude filament
 
-## Fehlerbehebung
+### Buttons
+- **A Button**: Home X/Y axes
+- **B Button**: Full auto home (X, Y, Z)
 
-- **Controller wird nicht erkannt**: Stellen Sie sicher, dass der Controller korrekt angeschlossen ist und von Ihrem System erkannt wird.
-- **Unerwartete Bewegungen**: Überprüfen Sie die Joystick-Kalibrierung und passen Sie die Skalierungsfaktoren an.
-- **Plugin startet nicht**: Überprüfen Sie die OctoPrint-Logs auf Fehlermeldungen.
-- **UI-Elemente werden nicht angezeigt**: 
-  - Leeren Sie den Browser-Cache und laden Sie die Seite neu
-  - Überprüfen Sie die Browser-Konsole auf JavaScript-Fehler (F12 drücken)
-  - Stellen Sie sicher, dass JavaScript in Ihrem Browser aktiviert ist
-  - Überprüfen Sie, ob andere OctoPrint-Plugins korrekt funktionieren
-  - Überprüfen Sie die OctoPrint-Logs auf Fehlermeldungen (Settings > Logs)
-  - Starten Sie den OctoPrint-Server neu
-  - Deinstallieren und reinstallieren Sie das Plugin
-  - Versuchen Sie einen anderen Browser
+## ⚙️ Configuration
 
-## Bekannte Probleme und Lösungen
+In the plugin settings, you can adjust the following parameters:
 
-- **Fehlende UI-Elemente**: In einigen Fällen werden die UI-Elemente nicht korrekt angezeigt. Die aktuelle BUGFIX-Version behebt dieses Problem durch verbesserte Template-Bindung und Debug-Ausgaben.
-- **Einstellungen werden nicht geladen**: Die BUGFIX-Version enthält eine robustere Fehlerbehandlung beim Laden der Einstellungen.
+- XY Scaling Factor: Affects the sensitivity of X/Y movement
+- Z Scaling Factor: Affects the sensitivity of Z movement
+- E Scaling Factor: Affects the sensitivity of extruder movement
 
-## Lizenz
+## 🧪 Test Mode
 
-Dieses Projekt steht unter der MIT-Lizenz.
+The test mode can be activated via the "Xbox Controller" tab. In this mode, controller inputs are displayed without sending actual movement commands to the printer.
+
+## 🛠️ Troubleshooting
+
+- **Controller not recognized**: Ensure the controller is properly connected and recognized by your system.
+- **Unexpected movements**: Check joystick calibration and adjust scaling factors.
+- **Plugin not starting**: Check OctoPrint logs for error messages.
+- **UI elements not displaying**:
+  - Clear browser cache and reload the page
+  - Check browser console for JavaScript errors (press F12)
+  - Ensure JavaScript is enabled in your browser
+  - Verify other OctoPrint plugins are functioning correctly
+  - Check OctoPrint logs for error messages (Settings > Logs)
+  - Restart the OctoPrint server
+  - Uninstall and reinstall the plugin
+  - Try a different browser
+
+## 🐞 Known Issues
+
+- **Missing UI elements**: In some cases, UI elements may not display correctly. The current BUGFIX version addresses this issue with improved template binding and debug outputs.
+- **Settings not loading**: The BUGFIX version includes more robust error handling when loading settings.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please fork the repository and submit a pull request with your changes.
+
+## 📜 License
+
+This project is licensed under the MIT License.

@@ -49,8 +49,16 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         )
 
     def on_api_command(self, command, data):
+        self._logger.debug("API command received: %s, data: %s", command, data)
+        
         if command == "toggleTestMode":
-            self.test_mode = bool(data.get("enabled", False))
+            enabled = bool(data.get("enabled", False))
+            self._logger.info("Test mode toggled: %s", enabled)
+            self.test_mode = enabled
+            self._plugin_manager.send_plugin_message(self._identifier, 
+                                                   {"type": "status", "status": "Test Mode: " + ("Enabled" if enabled else "Disabled")})
+            return flask.jsonify(success=True, testMode=enabled)
+            
         elif command == "updateScaleFactor":
             axis = data.get("axis")
             value = int(data.get("value", 150))
@@ -62,8 +70,80 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
             elif axis == "e":
                 self.e_scale_factor = value
                 
+            self._settings.set([axis + "_scale_factor"], value)
             self._settings.save()
             return flask.jsonify(success=True)
+            
+        elif command == "controllerValues":
+            # Handle controller values from JavaScript
+            self._logger.debug("Received controller values: x=%s, y=%s, z=%s, e=%s", 
+                            data.get("x", 0), data.get("y", 0), data.get("z", 0), data.get("e", 0))
+            
+            # Always forward to UI for display
+            self._plugin_manager.send_plugin_message(self._identifier, {
+                "type": "controller_values",
+                "x": float(data.get("x", 0)),
+                "y": float(data.get("y", 0)),
+                "z": float(data.get("z", 0)),
+                "e": float(data.get("e", 0))
+            })
+            
+            # If not in test mode, process movement commands
+            if not self.test_mode:
+                self._process_controller_values(data)
+                
+            return flask.jsonify(success=True)
+        
+        return flask.jsonify(error="Unknown command")
+
+    def _process_controller_values(self, data):
+        """Process controller values and send commands to printer"""
+        try:
+            # Only process if printer is operational
+            if not self._printer.is_operational() or self._printer.is_printing():
+                return
+                
+            # X movement
+            x_val = float(data.get("x", 0))
+            if abs(x_val) > 0.1:
+                distance = min(abs(x_val) * 10, 10)
+                distance = round(distance, 1)
+                self._printer.jog({"x": distance if x_val > 0 else -distance})
+                self._logger.debug("X movement: %s", distance if x_val > 0 else -distance)
+                
+            # Y movement
+            y_val = float(data.get("y", 0))
+            if abs(y_val) > 0.1:
+                distance = min(abs(y_val) * 10, 10)
+                distance = round(distance, 1)
+                self._printer.jog({"y": distance if y_val > 0 else -distance})
+                self._logger.debug("Y movement: %s", distance if y_val > 0 else -distance)
+                
+            # Z movement
+            z_val = float(data.get("z", 0))
+            if abs(z_val) > 0.1:
+                distance = min(abs(z_val) * 10, 10)
+                distance = round(distance, 1)
+                self._printer.jog({"z": distance if z_val > 0 else -distance})
+                self._logger.debug("Z movement: %s", distance if z_val > 0 else -distance)
+                
+            # Extruder movement
+            e_val = float(data.get("e", 0))
+            if abs(e_val) > 0.1:
+                distance = min(abs(e_val) * 5, 5)
+                distance = round(distance, 1)
+                self._printer.extrude(distance if e_val > 0 else -distance)
+                self._logger.debug("Extruder movement: %s", distance if e_val > 0 else -distance)
+                
+            # Handle buttons if present in data
+            buttons = data.get("buttons", {})
+            for btn_idx, pressed in buttons.items():
+                if pressed:
+                    self._logger.debug("Button pressed: %s", btn_idx)
+                    self.handle_button_press(int(btn_idx))
+                    
+        except Exception as e:
+            self._logger.error("Error processing controller values: %s", str(e))
 
     def update_status(self, status):
         self._plugin_manager.send_plugin_message(
@@ -123,71 +203,65 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
             # Controller initialisieren
             joystick = pygame.joystick.Joystick(0)
             joystick.init()
-            self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Verbunden: " + joystick.get_name()})
+            controller_name = joystick.get_name()
+            self._logger.info("Controller connected: %s with %d axes and %d buttons", 
+                             controller_name, joystick.get_numaxes(), joystick.get_numbuttons())
+            self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Verbunden: " + controller_name})
             
             # Hauptschleife
             while self.controller_running:
                 pygame.event.pump()
                 
                 # Joystick-Werte auslesen
-                left_x = joystick.get_axis(0)  # Linker Joystick X-Achse für Extruder
-                left_y = -joystick.get_axis(1)  # Y-Achse invertieren
-                right_x = joystick.get_axis(2)  # Rechter Joystick X-Achse
-                right_y = -joystick.get_axis(3)  # Y-Achse invertieren
-                
-                # Trigger-Werte auslesen (können je nach Controller unterschiedlich sein)
                 try:
-                    left_trigger = joystick.get_axis(4) if joystick.get_numaxes() > 4 else 0
-                    right_trigger = joystick.get_axis(5) if joystick.get_numaxes() > 5 else 0
-                except:
-                    # Fallback für andere Controller-Layouts
-                    left_trigger = (joystick.get_button(6) * 1.0) if joystick.get_numbuttons() > 6 else 0
-                    right_trigger = (joystick.get_button(7) * 1.0) if joystick.get_numbuttons() > 7 else 0
-                
-                # X/Y-Bewegung mit rechtem Joystick
-                if abs(right_x) > 0.1:
-                    distance = min(abs(right_x) * 10, 10)
-                    self.move_printer("x", distance if right_x > 0 else -distance)
-                
-                if abs(right_y) > 0.1:
-                    distance = min(abs(right_y) * 10, 10)
-                    self.move_printer("y", distance if right_y > 0 else -distance)
-                
-                # Extruder-Bewegung mit linkem Joystick (X-Achse)
-                if abs(left_x) > 0.1:
-                    distance = min(abs(left_x) * 5, 5)  # Kleinere Werte für Extruder
-                    self._printer.extrude(distance if left_x > 0 else -distance)
-                
-                # Z-Bewegung mit Triggern
-                # Rechter Trigger (RT) - nach oben
-                if right_trigger > 0.1:
-                    distance = min(right_trigger * 10, 10)
-                    self.move_printer("z", distance)  # Positive Werte = nach oben
-                
-                # Linker Trigger (LT) - nach unten
-                if left_trigger > 0.1:
-                    distance = min(left_trigger * 10, 10)
-                    self.move_printer("z", -distance)  # Negative Werte = nach unten
-                
-                # Buttons für andere Funktionen
-                for i in range(joystick.get_numbuttons()):
-                    if joystick.get_button(i):
-                        self.handle_button_press(i)
-                
-                # Testmodus-Daten senden
-                if self.test_mode:
-                    self._plugin_manager.send_plugin_message(self._identifier, {
+                    left_x = joystick.get_axis(0)  # Linker Joystick X-Achse für Extruder
+                    left_y = -joystick.get_axis(1)  # Y-Achse invertieren
+                    right_x = joystick.get_axis(2)  # Rechter Joystick X-Achse
+                    right_y = -joystick.get_axis(3)  # Y-Achse invertieren
+                    
+                    # Trigger-Werte auslesen (können je nach Controller unterschiedlich sein)
+                    try:
+                        left_trigger = joystick.get_axis(4) if joystick.get_numaxes() > 4 else 0
+                        right_trigger = joystick.get_axis(5) if joystick.get_numaxes() > 5 else 0
+                    except:
+                        # Fallback für andere Controller-Layouts
+                        left_trigger = (joystick.get_button(6) * 1.0) if joystick.get_numbuttons() > 6 else 0
+                        right_trigger = (joystick.get_button(7) * 1.0) if joystick.get_numbuttons() > 7 else 0
+                    
+                    # Daten für die UI
+                    controller_data = {
                         "type": "controller_values",
                         "x": right_x,
                         "y": right_y,
                         "z": right_trigger - left_trigger,  # Kombinierte Z-Bewegung
                         "e": left_x  # Extruder-Bewegung
-                    })
+                    }
+                    
+                    # Immer Daten senden, unabhängig vom Testmodus
+                    self._plugin_manager.send_plugin_message(self._identifier, controller_data)
+                    
+                    # Nur im Nicht-Testmodus Bewegungsbefehle ausführen
+                    if not self.test_mode:
+                        # Movement processing moved to _process_controller_values
+                        self._process_controller_values({
+                            "x": right_x,
+                            "y": right_y,
+                            "z": right_trigger - left_trigger,
+                            "e": left_x
+                        })
+                        
+                        # Buttons weiterhin direkt verarbeiten
+                        for i in range(joystick.get_numbuttons()):
+                            if joystick.get_button(i):
+                                self.handle_button_press(i)
+                    
+                except Exception as e:
+                    self._logger.error("Error reading controller: %s", str(e))
                 
                 time.sleep(0.1)  # Kurze Pause, um CPU-Last zu reduzieren
         
         except Exception as e:
-            self._logger.error("Fehler im Controller-Thread: %s", str(e))
+            self._logger.error("Error in controller thread: %s", str(e))
             self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Fehler: " + str(e)})
         
         finally:
@@ -225,7 +299,8 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
     def get_api_commands(self):
         return dict(
             toggleTestMode=["enabled"],
-            updateScaleFactor=["axis", "value"]
+            updateScaleFactor=["axis", "value"],
+            controllerValues=["x", "y", "z", "e"]
         )
 
 __plugin_name__ = "Xbox Controller Plugin"
