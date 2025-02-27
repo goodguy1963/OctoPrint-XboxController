@@ -4,10 +4,18 @@ import threading
 import os
 import logging
 import sys
+import subprocess
+import glob
 
 import octoprint.plugin
 import flask
 import pygame
+
+try:
+    import evdev
+    EVDEV_AVAILABLE = True
+except ImportError:
+    EVDEV_AVAILABLE = False
 
 ################################################################
 # Haupt-Plugin Klasse
@@ -29,6 +37,9 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         self.e_scale_factor = 150
         self.controller_initialized = False
         self.last_controller_check = 0
+        self.use_evdev = False  # Will be set based on availability and settings
+        self.controller_type = "unknown"  # Will store the detected controller type
+        self.evdev_device = None  # Will store the evdev device if applicable
 
     def get_template_configs(self):
         return [
@@ -48,7 +59,9 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
             xy_scale_factor=150,
             z_scale_factor=150,
             e_scale_factor=150,
-            max_z=100
+            max_z=100,
+            use_evdev=EVDEV_AVAILABLE,  # Default to evdev if available
+            usb_detection_method="auto"  # Can be "auto", "pygame", "evdev", "xboxdrv"
         )
 
     def get_api_commands(self):
@@ -219,10 +232,65 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         self._logger.info("Pygame Version: %s", pygame.version.ver)
         self._logger.info("Platform: %s", sys.platform)
         
+        # Log USB detection capabilities
+        self._logger.info("EVDEV available: %s", EVDEV_AVAILABLE)
+        
+        # Check for connected USB devices that might be controllers
+        self._logger.info("Checking USB devices...")
+        try:
+            if sys.platform.startswith('linux'):
+                # List USB devices on Linux
+                lsusb_output = subprocess.check_output(['lsusb']).decode('utf-8')
+                self._logger.info("USB Devices:\n%s", lsusb_output)
+                
+                # Look for common Xbox controller IDs
+                xbox_patterns = ['Microsoft.*Xbox', '045e:']  # Common Microsoft/Xbox USB IDs
+                for line in lsusb_output.splitlines():
+                    for pattern in xbox_patterns:
+                        if pattern.lower() in line.lower():
+                            self._logger.info("Potential Xbox controller detected: %s", line)
+            else:
+                self._logger.info("USB device listing not implemented for this platform")
+        except Exception as e:
+            self._logger.error("Error checking USB devices: %s", str(e))
+        
+        # Load settings
         self.xy_scale_factor = self._settings.get_int(["xy_scale_factor"], 150)
         self.z_scale_factor = self._settings.get_int(["z_scale_factor"], 150)
         self.e_scale_factor = self._settings.get_int(["e_scale_factor"], 150)
+        self.use_evdev = self._settings.get_boolean(["use_evdev"], EVDEV_AVAILABLE)
+        
+        # Check permissions for device access
+        self._check_device_permissions()
+        
+        # Start controller detection
         self.start_controller_thread()
+
+    def _check_device_permissions(self):
+        """Check if the user has proper permissions to access input devices"""
+        try:
+            if sys.platform.startswith('linux'):
+                # Check if user is in the 'input' group (common requirement for device access)
+                user = subprocess.check_output(['whoami']).decode('utf-8').strip()
+                groups = subprocess.check_output(['groups', user]).decode('utf-8')
+                
+                if 'input' not in groups and 'root' not in groups:
+                    self._logger.warning("User is not in the 'input' group, may not have permission to access controllers")
+                    self._logger.warning("Consider running: sudo usermod -a -G input %s", user)
+                    self.update_status("Warning: Limited USB device access rights")
+                
+                # Check if /dev/input is readable
+                input_devices = glob.glob('/dev/input/js*') + glob.glob('/dev/input/event*')
+                if not input_devices:
+                    self._logger.warning("No input devices found in /dev/input")
+                else:
+                    self._logger.info("Found input devices: %s", input_devices)
+                    
+                    for device in input_devices:
+                        if os.path.exists(device) and not os.access(device, os.R_OK):
+                            self._logger.warning("No read permission for %s", device)
+        except Exception as e:
+            self._logger.warning("Error checking device permissions: %s", str(e))
 
     ## ShutdownPlugin: Wird beim Herunterfahren von OctoPrint aufgerufen
     def on_shutdown(self):
@@ -235,6 +303,14 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         self.xy_scale_factor = self._settings.get_int(["xy_scale_factor"], 150)
         self.z_scale_factor = self._settings.get_int(["z_scale_factor"], 150)
         self.e_scale_factor = self._settings.get_int(["e_scale_factor"], 150)
+        
+        # Check if USB detection method changed
+        old_use_evdev = self.use_evdev
+        self.use_evdev = self._settings.get_boolean(["use_evdev"], EVDEV_AVAILABLE)
+        
+        if old_use_evdev != self.use_evdev:
+            self._logger.info("USB detection method changed, restarting controller thread")
+            self.restart_controller_thread()
 
     def start_controller_thread(self):
         if self.controller_thread is not None and self.controller_thread.is_alive():
@@ -247,6 +323,102 @@ class XboxControllerPlugin(octoprint.plugin.StartupPlugin,
         self._logger.info("Controller thread started")
     
     def controller_worker(self):
+        try:
+            # First try using evdev if available and enabled
+            if self.use_evdev and EVDEV_AVAILABLE and sys.platform.startswith('linux'):
+                self._logger.info("Using evdev for controller detection")
+                self._evdev_controller_loop()
+            else:
+                # Fall back to pygame
+                self._logger.info("Using pygame for controller detection")
+                self._pygame_controller_loop()
+                
+        finally:
+            self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Nicht verbunden"})
+
+    def _evdev_controller_loop(self):
+        """Controller worker using evdev (Linux only)"""
+        try:
+            self._logger.info("Starting evdev controller detection loop")
+            
+            while self.controller_running:
+                try:
+                    # Look for Xbox controllers
+                    if not self.controller_initialized:
+                        devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
+                        for device in devices:
+                            self._logger.debug("Found input device: %s", device.name)
+                            # Check if it's likely an Xbox controller
+                            name_lower = device.name.lower()
+                            if 'xbox' in name_lower or 'microsoft' in name_lower or 'gamepad' in name_lower:
+                                self._logger.info("Found potential Xbox controller: %s at %s", device.name, device.path)
+                                self.evdev_device = device
+                                self.controller_type = "xbox-evdev"
+                                self.controller_initialized = True
+                                self._plugin_manager.send_plugin_message(self._identifier, 
+                                                                    {"type": "status", "status": "Verbunden: " + device.name})
+                                break
+                    
+                    # If we have an initialized controller, read events
+                    if self.controller_initialized and self.evdev_device:
+                        # Non-blocking event reading
+                        events = self.evdev_device.read()
+                        
+                        # Process events and convert to controller values
+                        if events:
+                            # Simplified handling - in a real implementation,
+                            # you would track state of all axes and buttons
+                            self._logger.debug("Received %d events from controller", len(events))
+                            
+                            # Example processing of events to controller values
+                            # This would need to be adapted to your specific controller
+                            controller_data = self._process_evdev_events(events)
+                            
+                            # Send values to UI for display
+                            self._plugin_manager.send_plugin_message(self._identifier, {
+                                "type": "controller_values",
+                                "x": controller_data.get('x', 0),
+                                "y": controller_data.get('y', 0),
+                                "z": controller_data.get('z', 0),
+                                "e": controller_data.get('e', 0)
+                            })
+                            
+                            # Process movement if not in test mode
+                            if not self.test_mode:
+                                self._process_controller_values(controller_data)
+                    
+                    # Check if device is still connected
+                    elif self.controller_initialized:
+                        if not os.path.exists(self.evdev_device.path):
+                            self._logger.info("Controller disconnected: %s", self.evdev_device.path)
+                            self._plugin_manager.send_plugin_message(self._identifier, {"type": "status", "status": "Nicht verbunden"})
+                            self.controller_initialized = False
+                            self.evdev_device = None
+                    
+                    # Short sleep to prevent high CPU usage
+                    time.sleep(0.01)
+                    
+                except Exception as e:
+                    if 'Resource temporarily unavailable' not in str(e):
+                        self._logger.error("Error in evdev controller loop: %s", str(e))
+                    time.sleep(0.5)
+                    
+        except Exception as e:
+            self._logger.error("Error in evdev controller worker: %s", str(e))
+
+    def _process_evdev_events(self, events):
+        """Process evdev events to controller values"""
+        # This is a simplified implementation
+        # You would need to map your specific controller's events to axes
+        result = {'x': 0, 'y': 0, 'z': 0, 'e': 0, 'buttons': {}}
+        
+        # In a real implementation, you would track state of all axes
+        # and update only the ones that changed in this batch of events
+        
+        return result
+
+    def _pygame_controller_loop(self):
+        """Controller worker using pygame"""
         try:
             # Initialize pygame
             self._logger.info("Initializing pygame for controller detection")

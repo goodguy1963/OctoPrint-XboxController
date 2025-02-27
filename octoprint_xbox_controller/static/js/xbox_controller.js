@@ -35,6 +35,27 @@ $(function() {
         self.controllerConnected = ko.observable(false);
         self.backendControllerConnected = ko.observable(false);
         self.messageCount = 0;
+        
+        // Platform detection
+        self.isPlatformLinux = ko.observable(false);
+        
+        // Check if running on Linux
+        $.ajax({
+            url: API_BASEURL + "util/test",
+            type: "POST",
+            dataType: "json",
+            data: JSON.stringify({
+                command: "path",
+                path: "/proc/version",
+                check_type: "file",
+                check_access: "access"
+            }),
+            contentType: "application/json; charset=UTF-8",
+            success: function(response) {
+                self.isPlatformLinux(response.result);
+                console.log("Platform is Linux:", response.result);
+            }
+        });
 
         // Fügen Sie eine Initialisierungsfunktion hinzu
         self.onBeforeBinding = function() {
@@ -83,15 +104,25 @@ $(function() {
             console.log("Tab-Element:", $("#tab_plugin_xbox_controller").length);
             console.log("Settings-Element:", $("#settings_plugin_xbox_controller").length);
             
-            // Fügen Sie einen sichtbaren Debug-Hinweis hinzu
-            $("#tab_plugin_xbox_controller").prepend("<div style='background-color: yellow; padding: 5px; margin-bottom: 10px;'>Debug: ViewModel wurde gebunden</div>");
+            // Add a debug note about controller detection
+            $("#tab_plugin_xbox_controller").prepend(
+                "<div class='alert alert-info'>" +
+                "<strong>Info:</strong> Controller kann direkt am Raspberry Pi erkannt werden, " +
+                "auch wenn er nicht am Browsing-Gerät angeschlossen ist." +
+                "</div>"
+            );
             
-            // Initialisiere Gamepad-System wenn im Browser verfügbar
-            if (navigator.getGamepads) {
-                self.setupGamepad();
+            // Only set up browser gamepad detection on non-touch devices
+            if (!('ontouchstart' in window)) {
+                // Initialisiere Gamepad-System wenn im Browser verfügbar
+                if (navigator.getGamepads) {
+                    console.log("Setting up browser-side gamepad detection as fallback");
+                    self.setupGamepad();
+                } else {
+                    console.log("Browser doesn't support Gamepad API - relying on backend controller detection");
+                }
             } else {
-                console.warn("Xbox Controller Plugin: Gamepad API nicht unterstützt");
-                self.controllerStatus("Gamepad API nicht unterstützt");
+                console.log("Touch device detected - skipping browser gamepad detection");
             }
         };
         

@@ -14,7 +14,8 @@ setup(
         "octoprint>=1.3.0",
         "xbox360controller",
         "pygame>=2.0.0",  # Ensure newer pygame version
-        "pyusb"  # Additional USB support
+        "pyusb",  # Additional USB support
+        "evdev",  # Linux input device support
     ],
     entry_points={
         "octoprint.plugin": [

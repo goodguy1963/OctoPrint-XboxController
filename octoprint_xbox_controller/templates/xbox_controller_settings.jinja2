@@ -21,4 +21,35 @@
             <input type="number" class="input-mini" data-bind="value: eScaleFactor" min="1" max="500">
         </div>
     </div>
+    
+    <div class="control-group">
+        <label class="control-label">USB-Erkennung Methode:</label>
+        <div class="controls">
+            <select data-bind="value: settings.plugins.xbox_controller.usb_detection_method">
+                <option value="auto">Automatisch (empfohlen)</option>
+                <option value="pygame">Pygame</option>
+                <option value="evdev">Linux evdev (nur Linux)</option>
+                <option value="xboxdrv">xboxdrv (nur Linux)</option>
+            </select>
+            <span class="help-block">Wähle die Methode zur Erkennung des USB-Controllers.</span>
+        </div>
+    </div>
+    
+    <!-- Show only on Linux -->
+    <div class="control-group" data-bind="visible: isPlatformLinux()">
+        <label class="control-label">Verwende evdev (Linux):</label>
+        <div class="controls">
+            <input type="checkbox" data-bind="checked: settings.plugins.xbox_controller.use_evdev">
+            <span class="help-block">Aktiviere für bessere Controller-Erkennung unter Linux</span>
+        </div>
+    </div>
+    
+    <div class="alert alert-info">
+        <h4>USB Berechtigungen auf Linux</h4>
+        <p>Wenn Sie Probleme mit der Controller-Erkennung haben, führen Sie folgende Befehle aus:</p>
+        <pre>sudo usermod -a -G input pi
+sudo chmod a+rw /dev/input/js*
+sudo chmod a+rw /dev/input/event*</pre>
+        <p>Starten Sie anschließend das System neu.</p>
+    </div>
 </form>
