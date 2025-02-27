@@ -14,11 +14,13 @@ Control your 3D printer directly with an Xbox controller through OctoPrint!
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Platform Compatibility](#platform-compatibility)
 - [Controller Mapping](#controller-mapping)
 - [Configuration](#configuration)
 - [Test Mode](#test-mode)
 - [Troubleshooting](#troubleshooting)
 - [Known Issues](#known-issues)
+- [FAQ](#faq)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -34,6 +36,8 @@ This plugin provides intuitive control of your 3D printer using an Xbox controll
 - **One-Touch Homing**: Quick homing functions with dedicated buttons
 - **Test Mode**: Verify controller inputs without sending commands to the printer
 - **Customizable Sensitivity**: Adjust response curves for different control styles
+- **Multi-Platform Support**: Works on Linux (Raspberry Pi) and Windows systems
+- **Dual Detection Methods**: Controller can be detected via browser or directly on the OctoPrint server
 
 ## 🔧 Requirements
 
@@ -41,6 +45,7 @@ This plugin provides intuitive control of your 3D printer using an Xbox controll
 - Python 3.x
 - Xbox controller or compatible gamepad
 - Pygame library (automatically installed with the plugin)
+- For Linux: `evdev` package (optional but recommended for better controller detection)
 
 ## 📥 Installation
 
@@ -50,7 +55,7 @@ This plugin provides intuitive control of your 3D printer using an Xbox controll
 2. Navigate to Settings → Plugin Manager → Get More...
 3. Enter `XboxController` in the search box or paste this URL:
    ```
-   https://github.com/goodguy1963/OctoPrint-XboxController/archive/BUGFIX.zip
+   https://github.com/goodguy1963/OctoPrint-XboxController/archive/main.zip
    ```
 4. Click "Install"
 5. Restart OctoPrint when prompted
@@ -60,7 +65,28 @@ This plugin provides intuitive control of your 3D printer using an Xbox controll
 1. Download the plugin from the GitHub repository
 2. Extract the downloaded ZIP file
 3. Copy the extracted folder to the OctoPrint plugins directory
-4. Restart OctoPrint
+4. Install the required dependencies:
+   ```bash
+   pip install pygame
+   ```
+5. On Linux, install the optional evdev package for better controller support:
+   ```bash
+   sudo apt-get install python3-evdev
+   ```
+6. Restart OctoPrint
+
+## 🖥️ Platform Compatibility
+
+### Raspberry Pi / Linux
+- Best experience with controllers physically connected to the Raspberry Pi
+- Requires proper user permissions (see Troubleshooting section)
+- Supports both evdev and pygame detection methods
+- Controllers can be detected even if not connected to the browsing device
+
+### Windows
+- Supports controllers connected to the OctoPrint server
+- Browser-based detection as fallback
+- Best performance with Xbox branded controllers
 
 ## 🎮 Controller Mapping
 
@@ -82,33 +108,92 @@ This plugin provides intuitive control of your 3D printer using an Xbox controll
 
 In the plugin settings, you can adjust the following parameters:
 
-- XY Scaling Factor: Affects the sensitivity of X/Y movement
-- Z Scaling Factor: Affects the sensitivity of Z movement
-- E Scaling Factor: Affects the sensitivity of extruder movement
+- **XY Scaling Factor**: Affects the sensitivity of X/Y movement (default: 150)
+- **Z Scaling Factor**: Affects the sensitivity of Z movement (default: 150)
+- **E Scaling Factor**: Affects the sensitivity of extruder movement (default: 150)
+- **Controller Detection Method**: Choose between automatic, evdev (Linux only), or pygame
+
+Higher values increase sensitivity, while lower values provide finer control.
 
 ## 🧪 Test Mode
 
-The test mode can be activated via the "Xbox Controller" tab. In this mode, controller inputs are displayed without sending actual movement commands to the printer.
+The test mode can be activated via the "Xbox Controller" tab. In this mode:
+- Controller inputs are displayed in real-time
+- No movement commands are sent to the printer
+- The mode persists between browser sessions
+- Great for testing controller connectivity and response
 
 ## 🛠️ Troubleshooting
 
-- **Controller not recognized**: Ensure the controller is properly connected and recognized by your system.
-- **Unexpected movements**: Check joystick calibration and adjust scaling factors.
-- **Plugin not starting**: Check OctoPrint logs for error messages.
-- **UI elements not displaying**:
-  - Clear browser cache and reload the page
-  - Check browser console for JavaScript errors (press F12)
-  - Ensure JavaScript is enabled in your browser
-  - Verify other OctoPrint plugins are functioning correctly
-  - Check OctoPrint logs for error messages (Settings > Logs)
-  - Restart the OctoPrint server
-  - Uninstall and reinstall the plugin
-  - Try a different browser
+### Controller Not Detected
+
+#### On Raspberry Pi / Linux:
+1. Check user permissions:
+   ```bash
+   # Add your user to the input group
+   sudo usermod -a -G input $USER
+   # Log out and log back in for changes to take effect
+   ```
+
+2. Verify device access:
+   ```bash
+   # List input devices
+   ls -l /dev/input/js*
+   ls -l /dev/input/event*
+   ```
+
+3. Test controller detection:
+   ```bash
+   # For evdev
+   python3 -c "import evdev; print(evdev.list_devices())"
+   # For pygame
+   python3 -c "import pygame; pygame.init(); pygame.joystick.init(); print(pygame.joystick.get_count())"
+   ```
+
+#### On Windows:
+1. Test in Windows Game Controllers panel (Press Win+R, type 'joy.cpl')
+2. Ensure controller is recognized by Windows before using with OctoPrint
+3. Try a different USB port
+4. Update controller drivers
+
+### UI Elements Not Displaying
+1. Clear browser cache and reload the page
+2. Check browser console for JavaScript errors (press F12)
+3. Ensure JavaScript is enabled in your browser
+4. Verify other OctoPrint plugins are functioning correctly
+5. Check OctoPrint logs for error messages (Settings > Logs)
+6. Restart the OctoPrint server
+7. Try a different browser
+
+### Movement Issues
+1. Verify controller is properly calibrated in your OS
+2. Adjust scaling factors in plugin settings
+3. Ensure the controller is not in test mode
+4. Check if printer is operational and not currently printing
+5. Verify printer connection in OctoPrint
 
 ## 🐞 Known Issues
 
-- **Missing UI elements**: In some cases, UI elements may not display correctly. The current BUGFIX version addresses this issue with improved template binding and debug outputs.
-- **Settings not loading**: The BUGFIX version includes more robust error handling when loading settings.
+- **Browser Compatibility**: Some browsers may have issues with the Gamepad API. Chrome and Firefox are recommended.
+- **Controller Reconnection**: Occasionally, a manual restart of OctoPrint may be required after reconnecting a controller.
+- **Multiple Controllers**: The plugin currently works best with a single controller connected.
+- **Wireless Controllers**: Some wireless controllers may have connection issues or increased latency.
+- **UI Element Display**: In some cases, UI elements may not display correctly. Clear your browser cache or try a different browser.
+- **Settings Loading**: If settings fail to load, try restarting OctoPrint or reinstalling the plugin.
+
+## ❓ FAQ
+
+**Q: Can I use a PlayStation/Generic controller instead of Xbox?**  
+A: Yes, most controllers that work with your operating system should work, though button mapping may differ.
+
+**Q: Does this work with OctoPi/OctoPrint on a Raspberry Pi?**  
+A: Yes, this is the primary development platform and works best on Raspberry Pi.
+
+**Q: Can I use this while printing?**  
+A: The plugin has safety features that prevent movement commands during active printing.
+
+**Q: Will the controller work if connected to my PC instead of the Raspberry Pi?**  
+A: Yes, through browser detection, but for best results connect directly to the OctoPrint server.
 
 ## 🤝 Contributing
 
